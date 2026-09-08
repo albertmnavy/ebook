@@ -138,6 +138,8 @@ h3 { font-size: 18px; }
 .address-row { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 9px; }
 .address-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 12px; font-size: 13px; text-align: center; }
 .address-row button { border: 0; background: var(--blue); color: #fff; width: 64px; }
+.recharge-input { display: grid; gap: 8px; margin: 13px 0; }
+.recharge-input .input { text-align: center; }
 .center { text-align: center; }
 .primary-button, .secondary-button, .danger-button, .success-button { border: 0; border-radius: 6px; color: #fff; padding: 10px 15px; }
 .primary-button { background: var(--blue); }

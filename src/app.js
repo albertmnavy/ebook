@@ -37,6 +37,16 @@ async function hashPassword(password) {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
+const APP_STATE_PREFIX = 'infotech.app.';
+function defaultAppState() { return { availableBalance: 50, availableFund: 0, incomeBalance: 50, totalIncome: 50, totalWithdrawal: 0, packages: [], payments: [], transfers: [], swaps: [], withdrawals: [], tickets: [], ledger: [] }; }
+function appStateKey() { return `${APP_STATE_PREFIX}${currentSession()?.userId || 'guest'}`; }
+function getAppState() { const saved = readJson(localStorage, appStateKey()); return saved ? { ...defaultAppState(), ...saved } : defaultAppState(); }
+function saveAppState(state) { localStorage.setItem(appStateKey(), JSON.stringify(state)); return state; }
+function amountValue(value) { const amount = Number(String(value).replace(/,/g, '')); return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0; }
+function displayMoney(value) { return amountValue(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function today() { return new Date().toLocaleDateString('en-GB'); }
+function addLedger(state, type, amount, description) { state.ledger.unshift({ id: `TX-${Date.now()}`, date: today(), type, amount: amountValue(amount), description }); }
+function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
 function fieldValue(id) { return document.getElementById(id)?.value.trim() || ''; }
 function authError(message) { showToast(message); document.querySelector('.auth-card')?.classList.add('auth-error'); setTimeout(() => document.querySelector('.auth-card')?.classList.remove('auth-error'), 450); }
 const app = { active: location.hash.slice(1) || (currentSession() ? 'dashboard' : 'login'), openGroups: new Set(['packages', 'income', 'transactional', 'reports']) };
@@ -79,14 +89,18 @@ function renderPage() {
 }
 
 function dashboardPage() {
+  const state = getAppState();
+  const user = storedUser() || {};
+  const basicTotal = state.packages.filter(item => item.kind === 'Basic').reduce((sum, item) => sum + amountValue(item.amount), 0);
+  const fdTotal = state.packages.filter(item => item.kind === 'FD').reduce((sum, item) => sum + amountValue(item.amount), 0);
   return `${pageHead('Dashboard')}<div class="dashboard-top">
-    <div class="panel profile-card"><div class="profile-emblem">⌂</div><h2>AMAN</h2><div class="profile-meta"><div class="meta-block"><div class="meta-label">User ID</div><div class="meta-value">IF496224</div></div><div class="meta-block"><div class="meta-label">Status</div><div class="meta-value status-inactive">Inactive</div></div><div class="meta-block"><div class="meta-label">Join Date</div><div class="meta-value">08 Sep 2026</div></div></div><div class="profile-direct">Direct Business : <strong>₹ 0.00</strong></div><div class="referral"><span>🔗 https://www.infotech.online/register?r=IF496224</span><button class="copy-button" data-copy="https://www.infotech.online/register?r=IF496224">Copy</button></div><div class="social-row"><strong>Join Us :</strong><span>◉</span><span>➤</span></div></div>
-    <div class="summary-column"><div class="grid grid-2">${stat('Basic Package', money('0.00'))}${stat('FD Package', money('0.00'))}</div>${sectionTitle('🎁', 'Balance Summary')}<div class="grid grid-2">${stat('Available Fund', money('0.00'), 'value-green')}${stat('Available Balance', money('50.00'), 'value-cyan')}${stat('Total Income', money('50.00'), 'value-green')}${stat('Total Withdrawal', money('0.00'), 'value-red')}</div></div>
-  </div>${sectionTitle('♣', 'Team Summary', 'cyan')}<div class="grid grid-2 dashboard-grid" style="max-width:690px">${stat('Direct Team', '0', 'value-green')}${stat('Total Team', '0')}</div>${sectionTitle('🎁', 'Basic Income Breakdown')}<div class="grid grid-4">${stat('Joining Bonus', money('50.00'), 'value-yellow')}${stat('Referral Income', money('0.00'), 'value-blue')}${stat('Today ROI Income', money('0.00'), 'value-green')}${stat('Today Level Income', money('0.00'), 'value-cyan')}${stat('Total ROI Income', money('0.00'), 'value-green')}${stat('Total Level Income', money('0.00'), 'value-cyan')}</div>${sectionTitle('🎁', 'FD Income Breakdown')}<div class="grid grid-4">${stat('Today ROI Income', money('0.00'), 'value-green')}${stat('Today Level Income', money('0.00'), 'value-cyan')}${stat('Total ROI Income', money('0.00'), 'value-green')}${stat('Total Level Income', money('0.00'), 'value-cyan')}${stat('Referral Income', money('0.00'), 'value-blue')}${stat('FD Released', money('0.00'), 'value-blue')}</div>`;
+    <div class="panel profile-card"><div class="profile-emblem">⌂</div><h2>${escapeHtml(user.fullName || 'AMAN')}</h2><div class="profile-meta"><div class="meta-block"><div class="meta-label">User ID</div><div class="meta-value">${escapeHtml(user.userId || 'INF000000')}</div></div><div class="meta-block"><div class="meta-label">Status</div><div class="meta-value value-green">Active</div></div><div class="meta-block"><div class="meta-label">Join Date</div><div class="meta-value">${escapeHtml(user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : today())}</div></div></div><div class="profile-direct">Direct Business : <strong>₹ 0.00</strong></div><div class="referral"><span>🔗 https://www.infotech.online/register?r=${escapeHtml(user.userId || '')}</span><button class="copy-button" data-copy="https://www.infotech.online/register?r=${escapeHtml(user.userId || '')}">Copy</button></div><div class="social-row"><strong>Join Us :</strong><span>◉</span><span>➤</span></div></div>
+    <div class="summary-column"><div class="grid grid-2">${stat('Basic Package', money(displayMoney(basicTotal)))}${stat('FD Package', money(displayMoney(fdTotal)))}</div>${sectionTitle('🎁', 'Balance Summary')}<div class="grid grid-2">${stat('Available Fund', money(displayMoney(state.availableFund)), 'value-green')}${stat('Available Balance', money(displayMoney(state.availableBalance)), 'value-cyan')}${stat('Total Income', money(displayMoney(state.totalIncome)), 'value-green')}${stat('Total Withdrawal', money(displayMoney(state.totalWithdrawal)), 'value-red')}</div></div>
+  </div>${sectionTitle('♣', 'Team Summary', 'cyan')}<div class="grid grid-2 dashboard-grid" style="max-width:690px">${stat('Direct Team', '0', 'value-green')}${stat('Total Team', '0')}</div>${sectionTitle('🎁', 'Basic Income Breakdown')}<div class="grid grid-4">${stat('Joining Bonus', money(displayMoney(state.totalIncome)), 'value-yellow')}${stat('Referral Income', money('0.00'), 'value-blue')}${stat('Today ROI Income', money('0.00'), 'value-green')}${stat('Today Level Income', money('0.00'), 'value-cyan')}${stat('Total ROI Income', money('0.00'), 'value-green')}${stat('Total Level Income', money('0.00'), 'value-cyan')}</div>${sectionTitle('🎁', 'FD Income Breakdown')}<div class="grid grid-4">${stat('Today ROI Income', money('0.00'), 'value-green')}${stat('Today Level Income', money('0.00'), 'value-cyan')}${stat('Total ROI Income', money('0.00'), 'value-green')}${stat('Total Level Income', money('0.00'), 'value-cyan')}${stat('Referral Income', money('0.00'), 'value-blue')}${stat('FD Released', money('0.00'), 'value-blue')}</div>`;
 }
 
 function rechargePage() {
-  return `${pageHead('Recharge', 'Package / Recharge')}<div class="panel qr-card"><h2>Scan QR to Pay</h2><div class="notice">Use your preferred UPI or banking app to scan this payment gateway QR. Your payment will be securely verified after checkout.</div><div class="order-id">Payment Id: IF-PAY_b14fee38</div><div class="qr" id="qr"></div><div class="address-row"><span>Infotech Secure Payment Gateway</span><button data-copy="IF-PAY_b14fee38">Copy ID</button></div><div class="center"><button class="primary-button" data-action="confirm-payment">Confirm Payment</button></div><div class="notice" style="margin:9px 0 0">Please keep this page open until the payment gateway confirms your recharge.</div></div><div style="height:24px"></div>${tablePanel('Payment History', ['SR', 'DATE', 'PAYMENT ID', 'METHOD', 'AMOUNT', 'STATUS'])}`;
+  return `${pageHead('Recharge', 'Package / Recharge')}<div class="panel qr-card"><h2>Scan QR to Pay</h2><div class="notice">Use your preferred UPI or banking app to scan this payment gateway QR. Your payment will be securely verified after checkout.</div><div class="order-id">Payment Id: IF-PAY_b14fee38</div><div class="qr" id="qr"></div><div class="address-row"><span>Infotech Secure Payment Gateway</span><button data-copy="IF-PAY_b14fee38">Copy ID</button></div><div class="recharge-input"><label class="auth-label" for="recharge-amount">Recharge amount</label><input id="recharge-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter amount" /></div><div class="center"><button class="primary-button" data-action="confirm-payment">Confirm Payment</button></div><div class="notice" style="margin:9px 0 0">In local mode, confirmation records the payment in your account and updates your available balance.</div></div><div style="height:24px"></div>${tablePanel('Payment History', ['SR', 'DATE', 'PAYMENT ID', 'METHOD', 'AMOUNT', 'STATUS'])}`;
 }
 
 function authBrand() { return `<div class="auth-brand"><div class="brand-mark">⌂</div><div class="brand-text"><span>INFOTECH</span></div></div>`; }
@@ -99,13 +113,27 @@ function registerPage() {
 }
 
 function packagePage(type) {
-  const isFD = type === 'fd-package'; const items = isFD ? fdPackages : basicPackages;
-  return `${pageHead(isFD ? 'FD Package' : 'Basic Package', `Package / ${isFD ? 'FD Package' : 'Base Package'}`, '')}<div class="package-header"><div class="available-fund">Available Fund Balance : <span>0.00</span></div></div><div class="package-grid">${items.map(item => isFD ? `<article class="package-card"><div class="package-card-header"><div class="package-icon">◇</div><h3>${item[0]}</h3></div><div class="package-details"><div class="detail-row"><span>Amount :</span><span>${item[1]}</span></div><div class="detail-row"><span>Days :</span><span>${item[2]}</span></div><div class="detail-row"><span>Total Return :</span><span>${item[3]}</span></div></div><button class="purchase-button" data-package="${item[0]}" data-amount="${item[1]}" data-days="${item[2]}" data-return="${item[3]}">Purchase</button></article>` : `<article class="package-card"><div class="package-card-header"><div class="package-icon">◇</div><h3>${item[0]}</h3></div><div class="package-details"><div class="detail-row"><span>Amount :</span><span>${item[1]}</span></div><div class="detail-row"><span>Daily ROI :</span><span>${item[2]}</span></div><div class="detail-row"><span>Days :</span><span>${item[3]}</span></div><div class="detail-row"><span>Total Return :</span><span>${item[4]}</span></div></div><button class="purchase-button" data-package="${item[0]}" data-amount="${item[1]}" data-days="${item[3]}" data-return="${item[4]}">Purchase</button></article>`).join('')}</div>`;
+  const isFD = type === 'fd-package'; const items = isFD ? fdPackages : basicPackages; const state = getAppState();
+  return `${pageHead(isFD ? 'FD Package' : 'Basic Package', `Package / ${isFD ? 'FD Package' : 'Base Package'}`, '')}<div class="package-header"><div class="available-fund">Available Fund Balance : <span>${displayMoney(state.availableBalance)}</span></div></div><div class="package-grid">${items.map(item => isFD ? `<article class="package-card"><div class="package-card-header"><div class="package-icon">◇</div><h3>${item[0]}</h3></div><div class="package-details"><div class="detail-row"><span>Amount :</span><span>${item[1]}</span></div><div class="detail-row"><span>Days :</span><span>${item[2]}</span></div><div class="detail-row"><span>Total Return :</span><span>${item[3]}</span></div></div><button class="purchase-button" data-kind="FD" data-package="${item[0]}" data-amount="${item[1]}" data-days="${item[2]}" data-return="${item[3]}">Purchase</button></article>` : `<article class="package-card"><div class="package-card-header"><div class="package-icon">◇</div><h3>${item[0]}</h3></div><div class="package-details"><div class="detail-row"><span>Amount :</span><span>${item[1]}</span></div><div class="detail-row"><span>Daily ROI :</span><span>${item[2]}</span></div><div class="detail-row"><span>Days :</span><span>${item[3]}</span></div><div class="detail-row"><span>Total Return :</span><span>${item[4]}</span></div></div><button class="purchase-button" data-kind="Basic" data-package="${item[0]}" data-amount="${item[1]}" data-days="${item[3]}" data-return="${item[4]}">Purchase</button></article>`).join('')}</div>`;
+}
+
+function rowsForTable(title, columns) {
+  const state = getAppState();
+  if (title === 'Payment History') return state.payments.map((item, index) => [index + 1, item.date, item.paymentId, item.method, `₹ ${displayMoney(item.amount)}`, item.status]);
+  if (title === 'Withdrawal Request Details') return state.withdrawals.map((item, index) => [index + 1, item.date, `₹ ${displayMoney(item.amount)}`, `₹ ${displayMoney(item.charges)}`, `₹ ${displayMoney(item.payable)}`, item.status]);
+  if (title === 'Transfer Income To Fund Details') return state.swaps.map((item, index) => [index + 1, item.date, `₹ ${displayMoney(item.amount)}`, item.status]);
+  if (title === 'P2P Transfer History') return state.transfers.map((item, index) => [index + 1, item.date, item.target, `₹ ${displayMoney(item.amount)}`, item.status]);
+  if (title === 'My Support Tickets') return state.tickets.map((item, index) => [index + 1, item.date, item.subject, item.message, item.status]);
+  if (title.includes('Report') || title.includes('Summary')) return state.ledger.map((item, index) => [index + 1, item.date, item.description, `₹ ${displayMoney(item.amount)}`, item.type]);
+  if (title.includes('Income')) return state.ledger.map((item, index) => columns.length === 3 ? [index + 1, item.date, `₹ ${displayMoney(item.amount)}`] : [index + 1, item.date, item.description, '1', `₹ ${displayMoney(item.amount)}`]);
+  return [];
 }
 
 function tablePanel(title, columns, options = {}) {
   const filters = options.filters === false ? '' : `<div class="filters ${options.three ? 'three' : ''}">${columns.length > 3 && options.three ? '<input class="input" placeholder="dd-mm-yyyy" type="date" /><input class="input" placeholder="dd-mm-yyyy" type="date" /><input class="input" placeholder="Id" />' : '<input class="input" placeholder="dd-mm-yyyy" type="date" /><input class="input" placeholder="dd-mm-yyyy" type="date" />'}</div><div class="filter-actions"><button class="primary-button" data-action="search">Search</button><button class="secondary-button" data-action="reset">Reset</button><button class="success-button" data-action="refresh">Refresh</button></div>`;
-  return `<div class="panel table-panel"><div class="table-title"><h2><span class="title-icon">▥</span>${title}</h2>${options.total ? '<span class="total-badge">Total : 0.00</span>' : ''}</div>${filters}<div class="table-toolbar"><div class="entries"><select><option>25</option><option>50</option><option>100</option></select><span>entries per page</span></div><div class="export-buttons"><button data-action="copy-table">Copy</button><button data-action="export">Excel</button><button data-action="export">PDF</button><button data-action="print">Print</button></div></div><div class="table-wrap"><table><thead><tr>${columns.map(col => `<th>${col}</th>`).join('')}</tr></thead><tbody><tr class="empty-row"><td colspan="${columns.length}">No data available in table</td></tr></tbody></table></div><div class="table-foot"><span>Showing 0 to 0 of 0 entries</span><div class="pagination"><button>«</button><button>‹</button><button>›</button><button>»</button></div></div></div>`;
+  const rows = options.rows || rowsForTable(title, columns);
+  const body = rows.length ? rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('') : `<tr class="empty-row"><td colspan="${columns.length}">No data available in table</td></tr>`;
+  return `<div class="panel table-panel"><div class="table-title"><h2><span class="title-icon">▥</span>${title}</h2>${options.total ? `<span class="total-badge">Total : ${displayMoney(rows.reduce((sum, row) => sum + amountValue(row[columns.length - 1]), 0))}</span>` : ''}</div>${filters}<div class="table-toolbar"><div class="entries"><select><option>25</option><option>50</option><option>100</option></select><span>entries per page</span></div><div class="export-buttons"><button data-action="copy-table">Copy</button><button data-action="export">Excel</button><button data-action="export">PDF</button><button data-action="print">Print</button></div></div><div class="table-wrap"><table><thead><tr>${columns.map(col => `<th>${col}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div><div class="table-foot"><span>Showing ${rows.length ? 1 : 0} to ${rows.length} of ${rows.length} entries</span><div class="pagination"><button>«</button><button>‹</button><button>›</button><button>»</button></div></div></div>`;
 }
 
 function incomePage(kind) {
@@ -114,15 +142,17 @@ function incomePage(kind) {
 }
 
 function transferPage() {
-  return `${pageHead('Transfer Fund', 'Transactional / P2P Transfer')}<div class="form-layout"><div><div class="form-panel"><h2>Transfer Fund</h2><div class="form-field"><label>Available Fund Balance</label><div class="input-prefix"><span class="prefix">₹</span><input class="input" value="0.00" readonly /></div></div><div class="form-field"><label>Target User ID <span>*</span></label><input class="input" placeholder="Enter User ID" /></div><div class="form-field"><label>Amount <span>*</span></label><input class="input" placeholder="Enter Amount" /></div><div class="form-field"><label>T-Password <span>*</span></label><input class="input" placeholder="Enter T-Password" type="password" /></div><a class="link-button" href="#" data-action="forgot">Forgot T-Password?</a><div class="form-actions"><button class="primary-button" data-action="submit">Submit</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div></div></div>`;
+  const state = getAppState();
+  return `${pageHead('Transfer Fund', 'Transactional / P2P Transfer')}<div class="form-layout"><div><div class="form-panel"><h2>Transfer Fund</h2><div class="form-field"><label>Available Fund Balance</label><div class="input-prefix"><span class="prefix">₹</span><input class="input" value="${displayMoney(state.availableFund)}" readonly /></div></div><div class="form-field"><label>Target User ID <span>*</span></label><input id="transfer-target" class="input" placeholder="Enter User ID" /></div><div class="form-field"><label>Amount <span>*</span></label><input id="transfer-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter Amount" /></div><div class="form-field"><label>T-Password <span>*</span></label><input id="transfer-password" class="input" placeholder="Enter T-Password" type="password" /></div><a class="link-button" href="#" data-action="forgot">Forgot T-Password?</a><div class="form-actions"><button class="primary-button" data-action="transfer-submit">Submit</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div></div></div>${tablePanel('P2P Transfer History', ['SR', 'DATE', 'TARGET USER', 'AMOUNT', 'STATUS'])}`;
 }
 
 function swapPage() {
-  return `${pageHead('Swap', 'Transactional / Transfer to Fund')}<div class="form-layout"><div><div class="form-panel"><h2>Transfer To Fund</h2><div class="form-field"><label>Income Balance</label><input class="input" value="50.00" readonly /></div><div class="form-field"><label>Amount</label><input class="input" value="50" /></div><div class="form-actions"><button class="primary-button" data-action="submit">Submit</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div></div></div><div style="margin-top:24px">${tablePanel('Transfer Income To Fund Details', ['SR', 'DATE', 'AMOUNT', 'STATUS'])}</div>`;
+  const state = getAppState();
+  return `${pageHead('Swap', 'Transactional / Transfer to Fund')}<div class="form-layout"><div><div class="form-panel"><h2>Transfer To Fund</h2><div class="form-field"><label>Income Balance</label><input class="input" value="${displayMoney(state.incomeBalance)}" readonly /></div><div class="form-field"><label>Amount</label><input id="swap-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter amount" /></div><div class="form-actions"><button class="primary-button" data-action="swap-submit">Submit</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div></div></div><div style="margin-top:24px">${tablePanel('Transfer Income To Fund Details', ['SR', 'DATE', 'AMOUNT', 'STATUS'])}</div>`;
 }
 
 function withdrawalPage() {
-  return `${pageHead('Fund Withdrawal', 'Transactional / Fund Withdrawal')}<div class="timing-card panel"><div class="timing-icon">↗</div><p>Withdrawal timing is 10:00 AM to 2:00 PM.</p></div>${tablePanel('Withdrawal Request Details', ['SR', 'DATE', 'AMOUNT', 'CHARGES', 'PAYABLE', 'STATUS'])}`;
+  return `${pageHead('Fund Withdrawal', 'Transactional / Fund Withdrawal')}<div class="timing-card panel"><div class="timing-icon">↗</div><p>Withdrawal timing is 10:00 AM to 2:00 PM.</p></div><div class="form-panel" style="margin-bottom:24px"><h2>Request Withdrawal</h2><div class="form-field"><label>Available Fund Balance</label><input class="input" value="${displayMoney(getAppState().availableFund)}" readonly /></div><div class="form-field"><label>Amount <span>*</span></label><input id="withdraw-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter amount" /></div><div class="form-field"><label>Payment Details <span>*</span></label><input id="withdraw-details" class="input" placeholder="UPI ID or bank reference" /></div><div class="form-actions"><button class="primary-button" data-action="withdraw-submit">Submit Request</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div>${tablePanel('Withdrawal Request Details', ['SR', 'DATE', 'AMOUNT', 'CHARGES', 'PAYABLE', 'STATUS'])}`;
 }
 
 function reportPage(kind) {
@@ -130,9 +160,48 @@ function reportPage(kind) {
   return `${pageHead(names[kind], `Reports / ${names[kind]}`)}${tablePanel(names[kind], ['SR', 'DATE', 'DESCRIPTION', 'AMOUNT', 'STATUS'], { total: true, three: true })}`;
 }
 
-function supportPage() { return `${pageHead('Support Ticket', 'Support Ticket')}<div class="form-panel"><h2>Need help?</h2><div class="form-field"><label>Subject</label><input class="input" placeholder="What can we help with?" /></div><div class="form-field"><label>Message</label><textarea class="input" rows="6" placeholder="Describe your question"></textarea></div><div class="form-actions"><button class="primary-button" data-action="submit">Submit Ticket</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div>`; }
+function supportPage() { return `${pageHead('Support Ticket', 'Support Ticket')}<div class="form-panel"><h2>Need help?</h2><div class="form-field"><label>Subject</label><input id="ticket-subject" class="input" placeholder="What can we help with?" /></div><div class="form-field"><label>Message</label><textarea id="ticket-message" class="input" rows="6" placeholder="Describe your question"></textarea></div><div class="form-actions"><button class="primary-button" data-action="create-ticket">Submit Ticket</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div><div style="margin-top:24px">${tablePanel('My Support Tickets', ['SR', 'DATE', 'SUBJECT', 'MESSAGE', 'STATUS'], { filters: false })}</div>`; }
+function teamPage(title) { return `${pageHead(title, `Downline / ${title}`)}<div class="grid grid-2" style="max-width:720px">${stat('Direct Team', '0', 'value-cyan')}${stat('Total Team', '0', 'value-green')}</div><div style="margin-top:24px">${tablePanel(title, ['SR', 'USER ID', 'NAME', 'JOIN DATE', 'STATUS'], { filters: false })}</div>`; }
 
-const pages = { login: loginPage, register: registerPage, dashboard: dashboardPage, recharge: rechargePage, 'basic-package': () => packagePage('basic-package'), 'fd-package': () => packagePage('fd-package'), 'transfer-fund': transferPage, swap: swapPage, withdrawal: withdrawalPage, support: supportPage, 'basic-roi': () => incomePage('basic-roi'), 'basic-referral': () => incomePage('basic-referral'), 'basic-level': () => incomePage('basic-level'), 'fd-roi': () => incomePage('fd-roi'), 'fd-referral': () => incomePage('fd-referral'), 'fd-level': () => incomePage('fd-level'), 'daily-report': () => reportPage('daily-report'), 'monthly-report': () => reportPage('monthly-report'), 'fund-summary': () => reportPage('fund-summary'), 'income-summary': () => reportPage('income-summary') };
+const pages = { login: loginPage, register: registerPage, dashboard: dashboardPage, recharge: rechargePage, 'basic-package': () => packagePage('basic-package'), 'fd-package': () => packagePage('fd-package'), 'direct-team': () => teamPage('Direct Team'), 'total-team': () => teamPage('Total Team'), 'transfer-fund': transferPage, swap: swapPage, withdrawal: withdrawalPage, support: supportPage, 'basic-roi': () => incomePage('basic-roi'), 'basic-referral': () => incomePage('basic-referral'), 'basic-level': () => incomePage('basic-level'), 'fd-roi': () => incomePage('fd-roi'), 'fd-referral': () => incomePage('fd-referral'), 'fd-level': () => incomePage('fd-level'), 'daily-report': () => reportPage('daily-report'), 'monthly-report': () => reportPage('monthly-report'), 'fund-summary': () => reportPage('fund-summary'), 'income-summary': () => reportPage('income-summary') };
+
+function refreshApp() { renderNav(); renderPage(); }
+function recordLocalPayment() {
+  const amount = amountValue(fieldValue('recharge-amount'));
+  if (amount <= 0) return authError('Enter a recharge amount first.');
+  const state = getAppState();
+  const paymentId = `IF-PAY-${Date.now().toString().slice(-8)}`;
+  state.availableBalance += amount;
+  state.payments.unshift({ paymentId, date: today(), method: 'Payment Gateway QR', amount, status: 'Verified' });
+  addLedger(state, 'Recharge', amount, 'Payment gateway recharge');
+  saveAppState(state);
+  refreshApp();
+  showToast(`Payment verified. ₹ ${displayMoney(amount)} added to your balance.`);
+}
+function submitTransfer() {
+  const target = fieldValue('transfer-target').toUpperCase(); const amount = amountValue(fieldValue('transfer-amount')); const password = fieldValue('transfer-password'); const state = getAppState();
+  if (!target || !amount || !password) return authError('Complete the transfer form.');
+  if (amount > state.availableFund) return authError('Insufficient fund balance for this transfer.');
+  state.availableFund -= amount; state.transfers.unshift({ date: today(), target, amount, status: 'Completed' }); addLedger(state, 'Transfer', amount, `P2P transfer to ${target}`); saveAppState(state); refreshApp(); showToast(`₹ ${displayMoney(amount)} transferred to ${target}.`);
+}
+function submitSwap() {
+  const amount = amountValue(fieldValue('swap-amount')); const state = getAppState();
+  if (!amount) return authError('Enter an amount to swap.');
+  if (amount > state.incomeBalance) return authError('Insufficient income balance.');
+  state.incomeBalance -= amount; state.availableFund += amount; state.swaps.unshift({ date: today(), amount, status: 'Completed' }); addLedger(state, 'Swap', amount, 'Income transferred to fund'); saveAppState(state); refreshApp(); showToast(`₹ ${displayMoney(amount)} moved to fund balance.`);
+}
+function submitWithdrawal() {
+  const amount = amountValue(fieldValue('withdraw-amount')); const details = fieldValue('withdraw-details'); const state = getAppState();
+  if (!amount || !details) return authError('Enter an amount and payment details.');
+  if (amount > state.availableFund) return authError('Insufficient fund balance for this withdrawal.');
+  const charges = Math.round(amount * 0.02 * 100) / 100; const payable = amount - charges;
+  state.availableFund -= amount; state.totalWithdrawal += amount; state.withdrawals.unshift({ date: today(), amount, charges, payable, status: 'Pending' }); addLedger(state, 'Withdrawal', amount, `Withdrawal to ${details}`); saveAppState(state); refreshApp(); showToast(`Withdrawal request for ₹ ${displayMoney(payable)} submitted.`);
+}
+function createTicket() {
+  const subject = fieldValue('ticket-subject'); const message = fieldValue('ticket-message');
+  if (!subject || !message) return authError('Add a subject and message before submitting.');
+  const state = getAppState(); state.tickets.unshift({ date: today(), subject, message, status: 'Open' }); saveAppState(state); refreshApp(); showToast('Support ticket created.');
+}
 
 function bindPageEvents() {
   document.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', () => { navigator.clipboard?.writeText(button.dataset.copy); showToast('Copied to clipboard'); }));
@@ -149,7 +218,11 @@ function bindPageEvents() {
     if (action === 'copy-table') showToast('Table copied');
     if (action === 'print') window.print();
     if (action === 'submit') showToast('Demo submission complete');
-    if (action === 'confirm-payment') showToast('Payment confirmation received');
+    if (action === 'confirm-payment') return recordLocalPayment();
+    if (action === 'transfer-submit') return submitTransfer();
+    if (action === 'swap-submit') return submitSwap();
+    if (action === 'withdraw-submit') return submitWithdrawal();
+    if (action === 'create-ticket') return createTicket();
     if (action === 'forgot') showToast('Password reset needs a connected email service.');
     if (action === 'terms') showToast('Please accept the Terms and Conditions to continue.');
     if (action === 'sign-in') {
@@ -180,6 +253,7 @@ function bindPageEvents() {
       const userId = `INF${Math.floor(100000 + Math.random() * 900000)}`;
       const passwordHash = await hashPassword(password);
       localStorage.setItem(AUTH_KEY, JSON.stringify({ userId, fullName, email, country, mobile, referralId, passwordHash, createdAt: new Date().toISOString() }));
+      localStorage.setItem(`${APP_STATE_PREFIX}${userId}`, JSON.stringify(defaultAppState()));
       clearSession();
       location.hash = 'login';
       showToast(`Account created. Your User ID is ${userId}.`);
@@ -187,7 +261,7 @@ function bindPageEvents() {
   }));
 }
 
-function openPurchase(data) { document.getElementById('modal-title').textContent = `Purchase ${data.package}`; document.getElementById('modal-copy').textContent = 'This demo keeps the package flow interactive without processing a real payment.'; document.getElementById('modal-summary').innerHTML = `<div><span>Amount</span><strong>₹ ${data.amount}</strong></div><div><span>Duration</span><strong>${data.days} days</strong></div><div><span>Total return</span><strong>₹ ${data.return}</strong></div>`; document.getElementById('modal-backdrop').classList.add('open'); document.getElementById('modal-backdrop').setAttribute('aria-hidden', 'false'); }
+function openPurchase(data) { app.pendingPurchase = data; document.getElementById('modal-title').textContent = `Purchase ${data.package}`; document.getElementById('modal-copy').textContent = 'Review the package details before confirming this purchase.'; document.getElementById('modal-summary').innerHTML = `<div><span>Amount</span><strong>₹ ${data.amount}</strong></div><div><span>Duration</span><strong>${data.days} days</strong></div><div><span>Total return</span><strong>₹ ${data.return}</strong></div>`; document.getElementById('modal-backdrop').classList.add('open'); document.getElementById('modal-backdrop').setAttribute('aria-hidden', 'false'); }
 function closeModal() { document.getElementById('modal-backdrop').classList.remove('open'); document.getElementById('modal-backdrop').setAttribute('aria-hidden', 'true'); }
 function showToast(text) { toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toastEl.classList.remove('show'), 2600); }
 
@@ -195,6 +269,15 @@ document.getElementById('menu-toggle').addEventListener('click', () => document.
 document.getElementById('theme-toggle').addEventListener('click', () => { document.body.classList.toggle('light'); showToast(document.body.classList.contains('light') ? 'Light mode enabled' : 'Dark mode enabled'); });
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-backdrop').addEventListener('click', (event) => { if (event.target.id === 'modal-backdrop') closeModal(); });
-document.getElementById('modal-confirm').addEventListener('click', () => { closeModal(); showToast('Purchase request submitted'); });
+document.getElementById('modal-confirm').addEventListener('click', () => {
+  const purchase = app.pendingPurchase;
+  if (!purchase) return closeModal();
+  const state = getAppState(); const amount = amountValue(purchase.amount);
+  if (amount > state.availableBalance) { closeModal(); return authError('Insufficient balance. Use Recharge before purchasing this package.'); }
+  state.availableBalance -= amount;
+  state.packages.unshift({ kind: purchase.kind, name: purchase.package, amount, days: purchase.days, totalReturn: amountValue(purchase.return), purchasedAt: today() });
+  addLedger(state, 'Package', amount, `${purchase.package} purchased`);
+  saveAppState(state); closeModal(); refreshApp(); showToast(`${purchase.package} activated successfully.`);
+});
 window.addEventListener('hashchange', () => { app.active = location.hash.slice(1) || 'dashboard'; renderNav(); renderPage(); });
 renderNav(); renderPage();
