@@ -283,7 +283,7 @@ body.light .sidebar { background: #f7faff; } body.light .main-area { background:
 body { overflow-x: hidden; }
 .main-area { min-height: 100vh; }
 .topbar { position: sticky; top: 0; z-index: 15; background: rgba(2, 13, 29, .88); backdrop-filter: blur(18px); }
-.content { width: 100%; max-width: 1600px; padding: clamp(24px, 3vw, 44px) clamp(18px, 3vw, 42px) 52px; }
+.content { width: 100%; max-width: 1600px; padding: clamp(38px, 4.5vw, 62px) clamp(18px, 3vw, 42px) 52px; }
 .site-footer { max-width: 1600px; margin: 0 auto; }
 .page-head { min-height: 58px; margin-bottom: 28px; }
 .page-head h1 { font-size: clamp(26px, 2.3vw, 36px); line-height: 1.15; }
@@ -342,7 +342,7 @@ body.light .table-title, body.light th { color: #385170; }
   .topbar { height: 68px; gap: 16px; padding: 0 16px; }
   .theme-button { margin-left: 2px; }
   .account-menu span:not(.chevron) { display: none; }
-  .content { padding: 22px 14px 36px; }
+  .content { padding: 30px 14px 36px; }
   .page-head { margin-bottom: 22px; }
   .grid-2, .grid-4, .package-grid { grid-template-columns: 1fr; }
   .profile-card { min-height: 0; }
