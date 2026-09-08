@@ -319,7 +319,6 @@ document.getElementById('menu-toggle').addEventListener('click', () => document.
 document.querySelector('.main-area').addEventListener('click', event => {
   if (window.innerWidth <= 1280 && !event.target.closest('#menu-toggle')) document.querySelector('.sidebar').classList.remove('open');
 });
-document.getElementById('theme-toggle').addEventListener('click', () => { document.body.classList.toggle('light'); showToast(document.body.classList.contains('light') ? 'Light mode enabled' : 'Dark mode enabled'); });
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-backdrop').addEventListener('click', (event) => { if (event.target.id === 'modal-backdrop') closeModal(); });
 document.getElementById('modal-confirm').addEventListener('click', () => {

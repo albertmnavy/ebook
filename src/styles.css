@@ -56,7 +56,6 @@ button { cursor: pointer; }
 .topbar { height: 78px; border-bottom: 1px solid var(--line-soft); display: flex; align-items: center; gap: 24px; padding: 0 24px; }
 .icon-button { background: transparent; color: var(--text); border: 0; font-size: 25px; width: 32px; height: 32px; padding: 0; line-height: 1; }
 .menu-button { font-size: 24px; }
-.theme-button { font-size: 26px; margin-left: 12px; }
 .account-menu { margin-left: auto; display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
 .account-avatar { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; border: 2px solid var(--cyan); box-shadow: 0 0 0 2px #f2002e inset; color: #ff2443; font-size: 24px; }
 .chevron { color: #7d8b9e; font-size: 18px; }
@@ -343,7 +342,6 @@ body.light .table-title, body.light th { color: #385170; }
 }
 @media (max-width: 560px) {
   .topbar { height: 68px; gap: 16px; padding: 0 16px; }
-  .theme-button { margin-left: 2px; }
   .account-menu span:not(.chevron) { display: none; }
   .content { padding: 30px 14px 36px; }
   .page-head { margin-bottom: 22px; }
