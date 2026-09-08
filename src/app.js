@@ -71,8 +71,13 @@ function renderNav() {
   navList.querySelectorAll('[data-nav]').forEach(button => button.addEventListener('click', () => {
     const id = button.dataset.nav;
     const item = navItems.find(x => x.id === id);
-    if (item?.children) { app.openGroups.has(id) ? app.openGroups.delete(id) : app.openGroups.add(id); renderNav(); return; }
+    if (item?.children) {
+      if (app.openGroups.has(id)) app.openGroups.delete(id); else app.openGroups.add(id);
+      renderNav();
+      return;
+    }
     if (id === 'logout') { clearSession(); app.active = 'login'; location.hash = 'login'; renderNav(); renderPage(); return; }
+    toastEl.classList.remove('show');
     app.active = id; location.hash = id; renderNav(); renderPage(); document.querySelector('.sidebar').classList.remove('open');
   }));
 }
@@ -83,8 +88,11 @@ function renderPage() {
     if (location.hash !== '#login') location.hash = 'login';
   }
   const page = pages[app.active] || pages.dashboard;
+  if (publicPages.has(app.active)) toastEl.classList.remove('show');
   document.body.classList.toggle('auth-mode', app.active === 'login' || app.active === 'register');
   content.innerHTML = page();
+  const accountName = document.getElementById('account-name');
+  if (accountName) accountName.textContent = storedUser()?.fullName || 'Account';
   bindPageEvents();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -105,7 +113,12 @@ function rechargePage() {
 }
 
 function authBrand() { return `<div class="auth-brand"><div class="brand-mark">⌂</div><div class="brand-text"><span>INFOTECH</span></div></div>`; }
-function authInput(icon, label, placeholder, type = 'text', id = '') { return `<label class="auth-field"><span class="auth-label">${label}</span><span class="input-group"><span class="input-icon">${icon}</span><input class="input" id="${id}" type="${type}" placeholder="${placeholder}" /></span></label>`; }
+function authInput(icon, label, placeholder, type = 'text', id = '') {
+  const control = id === 'register-country'
+    ? `<select class="input" id="${id}"><option value="">${placeholder}</option><option>India</option><option>United Arab Emirates</option><option>United States</option><option>United Kingdom</option><option>Singapore</option></select>`
+    : `<input class="input" id="${id}" type="${type}" placeholder="${placeholder}" />`;
+  return `<label class="auth-field"><span class="auth-label">${label}</span><span class="input-group"><span class="input-icon">${icon}</span>${control}</span></label>`;
+}
 function loginPage() {
   return `<div class="auth-page"><div class="auth-card login-card">${authBrand()}<h1>Welcome <span>Back!</span></h1><p class="auth-subtitle">Please sign in to your account to continue.</p><form class="auth-form"><div class="auth-field"><label class="auth-label" for="login-user">User ID</label><span class="input-group"><span class="input-icon">♙</span><input id="login-user" class="input" placeholder="User ID" autocomplete="username" /></span></div><div class="auth-field"><label class="auth-label" for="login-password">Password</label><span class="input-group"><span class="input-icon">♧</span><input id="login-password" class="input" type="password" placeholder="Password" autocomplete="current-password" /><button type="button" class="password-toggle" data-toggle-password="login-password" aria-label="Show password">◉</button></span></div><div class="auth-options"><label class="remember"><input id="remember-me" type="checkbox" /> <span>Remember me</span></label><a href="#" data-action="forgot">Forgot Password?</a></div><button class="primary-button auth-submit" type="button" data-action="sign-in">Sign In</button></form><p class="auth-switch">Don't have an account? <a href="#register">Create an Account</a></p></div></div>`;
 }
@@ -206,8 +219,33 @@ function createTicket() {
   const state = getAppState(); state.tickets.unshift({ date: today(), subject, message, status: 'Open' }); saveAppState(state); refreshApp(); showToast('Support ticket created.');
 }
 
+function copyText(value) {
+  if (!value) return;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(value).then(() => showToast('Copied to clipboard')).catch(() => showToast('Copy is unavailable in this browser'));
+    return;
+  }
+  showToast('Copy is unavailable in this browser');
+}
+
+function resetPanel(button) {
+  const panel = button.closest('.form-panel, .table-panel');
+  panel?.querySelectorAll('input:not([readonly]), textarea, select').forEach(control => {
+    if (control.tagName === 'SELECT') control.selectedIndex = 0;
+    else control.value = '';
+  });
+  showToast('Form reset');
+}
+
+function copyTable(button) {
+  const table = button.closest('.table-panel')?.querySelector('table');
+  if (!table) return;
+  const text = [...table.rows].map(row => [...row.cells].map(cell => cell.textContent.trim()).join('\t')).join('\n');
+  copyText(text);
+}
+
 function bindPageEvents() {
-  document.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', () => { navigator.clipboard?.writeText(button.dataset.copy); showToast('Copied to clipboard'); }));
+  document.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', () => copyText(button.dataset.copy)));
   document.querySelectorAll('[data-toggle-password]').forEach(button => button.addEventListener('click', () => { const input = document.getElementById(button.dataset.togglePassword); input.type = input.type === 'password' ? 'text' : 'password'; }));
   const qr = document.getElementById('qr'); if (qr) { for (let i = 0; i < 441; i++) { const cell = document.createElement('i'); const x = i % 21, y = Math.floor(i / 21); const finder = (x < 7 && y < 7) || (x > 13 && y < 7) || (x < 7 && y > 13); const inner = (x > 1 && x < 5 && y > 1 && y < 5) || (x > 15 && x < 19 && y > 1 && y < 5) || (x > 1 && x < 5 && y > 15 && y < 19); if (finder ? (x === 0 || x === 6 || y === 0 || y === 6 || x === 14 || x === 20 || y === 0 || y === 6 || y === 14 || y === 20 || inner) : ((x * 7 + y * 11 + x * y) % 5 < 2)) cell.className = 'dark'; qr.appendChild(cell); } }
   document.querySelectorAll('.purchase-button').forEach(button => button.addEventListener('click', () => openPurchase(button.dataset)));
@@ -215,10 +253,10 @@ function bindPageEvents() {
     event.preventDefault();
     const action = button.dataset.action;
     if (action === 'search') showToast('Search applied');
-    if (action === 'reset' || action === 'reset-form') showToast('Form reset');
+    if (action === 'reset' || action === 'reset-form') return resetPanel(button);
     if (action === 'refresh') showToast('Data refreshed');
     if (action === 'export') showToast(`${button.textContent} export prepared`);
-    if (action === 'copy-table') showToast('Table copied');
+    if (action === 'copy-table') return copyTable(button);
     if (action === 'print') window.print();
     if (action === 'submit') showToast('Demo submission complete');
     if (action === 'confirm-payment') return recordLocalPayment();
@@ -277,6 +315,9 @@ function closeModal() { document.getElementById('modal-backdrop').classList.remo
 function showToast(text) { toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toastEl.classList.remove('show'), 2600); }
 
 document.getElementById('menu-toggle').addEventListener('click', () => document.querySelector('.sidebar').classList.toggle('open'));
+document.querySelector('.main-area').addEventListener('click', event => {
+  if (window.innerWidth <= 1280 && !event.target.closest('#menu-toggle')) document.querySelector('.sidebar').classList.remove('open');
+});
 document.getElementById('theme-toggle').addEventListener('click', () => { document.body.classList.toggle('light'); showToast(document.body.classList.contains('light') ? 'Light mode enabled' : 'Dark mode enabled'); });
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-backdrop').addEventListener('click', (event) => { if (event.target.id === 'modal-backdrop') closeModal(); });
