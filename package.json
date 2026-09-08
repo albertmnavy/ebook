@@ -9,7 +9,7 @@
     "dev": "node dev.mjs",
     "build": "node build.mjs",
     "start": "wrangler dev --config dist/server/wrangler.json",
-    "lint": "oxlint",
+    "lint": "oxlint src",
     "format": "oxfmt"
   },
   "dependencies": {
