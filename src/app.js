@@ -17,7 +17,29 @@ const fdPackages = [
   ['Base FD Plan 1', '1,000.00', '365', '3,650.00'], ['Prime FD Plan 1', '1,000.00', '515', '7,725.00'], ['Base FD Plan 2', '2,000.00', '365', '7,300.00'], ['Prime FD Plan 2', '2,000.00', '515', '15,450.00'], ['Base FD Plan 3', '5,000.00', '365', '18,250.00'], ['Prime FD Plan 3', '5,000.00', '515', '38,625.00'], ['Base FD Plan 4', '10,000.00', '365', '36,500.00'], ['Prime FD Plan 4', '10,000.00', '515', '77,250.00'], ['Base FD Plan 5', '25,000.00', '365', '91,250.00'], ['Prime FD Plan 5', '25,000.00', '515', '193,125.00'], ['Base FD Plan 6', '50,000.00', '365', '182,500.00'], ['Prime FD Plan 6', '50,000.00', '515', '386,250.00'],
 ];
 
-const app = { active: location.hash.slice(1) || 'login', openGroups: new Set(['packages', 'income', 'transactional', 'reports']) };
+const AUTH_KEY = 'infotech.auth.user';
+const SESSION_KEY = 'infotech.auth.session';
+const publicPages = new Set(['login', 'register']);
+
+function readJson(storage, key) {
+  try { return JSON.parse(storage.getItem(key) || 'null'); } catch { return null; }
+}
+function storedUser() { return readJson(localStorage, AUTH_KEY); }
+function currentSession() { return readJson(sessionStorage, SESSION_KEY) || readJson(localStorage, SESSION_KEY); }
+function clearSession() { sessionStorage.removeItem(SESSION_KEY); localStorage.removeItem(SESSION_KEY); }
+function setSession(userId, remember) {
+  const session = JSON.stringify({ userId, signedInAt: new Date().toISOString() });
+  sessionStorage.setItem(SESSION_KEY, session);
+  if (remember) localStorage.setItem(SESSION_KEY, session); else localStorage.removeItem(SESSION_KEY);
+}
+async function hashPassword(password) {
+  const bytes = new TextEncoder().encode(password);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+function fieldValue(id) { return document.getElementById(id)?.value.trim() || ''; }
+function authError(message) { showToast(message); document.querySelector('.auth-card')?.classList.add('auth-error'); setTimeout(() => document.querySelector('.auth-card')?.classList.remove('auth-error'), 450); }
+const app = { active: location.hash.slice(1) || (currentSession() ? 'dashboard' : 'login'), openGroups: new Set(['packages', 'income', 'transactional', 'reports']) };
 const content = document.getElementById('content');
 const navList = document.getElementById('nav-list');
 const toastEl = document.getElementById('toast');
@@ -39,12 +61,16 @@ function renderNav() {
     const id = button.dataset.nav;
     const item = navItems.find(x => x.id === id);
     if (item?.children) { app.openGroups.has(id) ? app.openGroups.delete(id) : app.openGroups.add(id); renderNav(); return; }
-    if (id === 'logout') { showToast('You are already in demo mode.'); return; }
+    if (id === 'logout') { clearSession(); app.active = 'login'; location.hash = 'login'; renderNav(); renderPage(); return; }
     app.active = id; location.hash = id; renderNav(); renderPage(); document.querySelector('.sidebar').classList.remove('open');
   }));
 }
 
 function renderPage() {
+  if (!publicPages.has(app.active) && !currentSession()) {
+    app.active = 'login';
+    if (location.hash !== '#login') location.hash = 'login';
+  }
   const page = pages[app.active] || pages.dashboard;
   document.body.classList.toggle('auth-mode', app.active === 'login' || app.active === 'register');
   content.innerHTML = page();
@@ -64,12 +90,12 @@ function rechargePage() {
 }
 
 function authBrand() { return `<div class="auth-brand"><div class="brand-mark">⌂</div><div class="brand-text"><span>INFOTECH</span></div></div>`; }
-function authInput(icon, label, placeholder, type = 'text', extra = '') { return `<label class="auth-field"><span class="auth-label">${label}</span><span class="input-group"><span class="input-icon">${icon}</span><input class="input" type="${type}" placeholder="${placeholder}" ${extra} /></span></label>`; }
+function authInput(icon, label, placeholder, type = 'text', id = '') { return `<label class="auth-field"><span class="auth-label">${label}</span><span class="input-group"><span class="input-icon">${icon}</span><input class="input" id="${id}" type="${type}" placeholder="${placeholder}" /></span></label>`; }
 function loginPage() {
-  return `<div class="auth-page"><div class="auth-card login-card">${authBrand()}<h1>Welcome <span>Back!</span></h1><p class="auth-subtitle">Please sign in to your account to continue.</p><form class="auth-form"><div class="auth-field"><label class="auth-label" for="login-user">User ID</label><span class="input-group"><span class="input-icon">♙</span><input id="login-user" class="input" placeholder="User ID" /></span></div><div class="auth-field"><label class="auth-label" for="login-password">Password</label><span class="input-group"><span class="input-icon">♧</span><input id="login-password" class="input" type="password" placeholder="Password" /><button type="button" class="password-toggle" data-toggle-password="login-password" aria-label="Show password">◉</button></span></div><div class="auth-options"><label class="remember"><input type="checkbox" /> <span>Remember me</span></label><a href="#" data-action="forgot">Forgot Password?</a></div><button class="primary-button auth-submit" type="button" data-action="sign-in">Sign In</button></form><p class="auth-switch">Don't have an account? <a href="#register">Create an Account</a></p></div></div>`;
+  return `<div class="auth-page"><div class="auth-card login-card">${authBrand()}<h1>Welcome <span>Back!</span></h1><p class="auth-subtitle">Please sign in to your account to continue.</p><form class="auth-form"><div class="auth-field"><label class="auth-label" for="login-user">User ID</label><span class="input-group"><span class="input-icon">♙</span><input id="login-user" class="input" placeholder="User ID" autocomplete="username" /></span></div><div class="auth-field"><label class="auth-label" for="login-password">Password</label><span class="input-group"><span class="input-icon">♧</span><input id="login-password" class="input" type="password" placeholder="Password" autocomplete="current-password" /><button type="button" class="password-toggle" data-toggle-password="login-password" aria-label="Show password">◉</button></span></div><div class="auth-options"><label class="remember"><input id="remember-me" type="checkbox" /> <span>Remember me</span></label><a href="#" data-action="forgot">Forgot Password?</a></div><button class="primary-button auth-submit" type="button" data-action="sign-in">Sign In</button></form><p class="auth-switch">Don't have an account? <a href="#register">Create an Account</a></p></div></div>`;
 }
 function registerPage() {
-  return `<div class="auth-page"><div class="auth-card register-card">${authBrand()}<h1>Create an <span>Account</span></h1><p class="auth-subtitle">Join us and experience Infotech.</p><form class="auth-form"><div class="auth-field"><label class="auth-label" for="register-referral">Referral ID</label><span class="input-group"><span class="input-icon">#</span><input id="register-referral" class="input" placeholder="Referral ID" /></span></div><div class="auth-grid">${authInput('▣', 'Full Name', 'Full Name')}${authInput('✉', 'Email Address', 'Email Address', 'email')}</div><div class="auth-grid">${authInput('◎', 'Country', '-- Select Country --')}${authInput('▯', 'Mobile (+ISD...)', 'Mobile Number', 'tel')}</div><div class="auth-field"><label class="auth-label" for="register-password">Password</label><span class="input-group"><span class="input-icon">♧</span><input id="register-password" class="input" type="password" placeholder="Password" /><button type="button" class="password-toggle" data-toggle-password="register-password" aria-label="Show password">◉</button></span></div><label class="terms"><input type="checkbox" /> <span>I agree to the <a href="#" data-action="terms">Terms and Conditions</a></span></label><button class="primary-button auth-submit" type="button" data-action="create-account">Create Account</button></form><p class="auth-switch">Already have an account? <a href="#login">Sign In</a></p></div></div>`;
+  return `<div class="auth-page"><div class="auth-card register-card">${authBrand()}<h1>Create an <span>Account</span></h1><p class="auth-subtitle">Join us and experience Infotech.</p><form class="auth-form"><div class="auth-field"><label class="auth-label" for="register-referral">Referral ID</label><span class="input-group"><span class="input-icon">#</span><input id="register-referral" class="input" placeholder="Referral ID" /></span></div><div class="auth-grid">${authInput('▣', 'Full Name', 'Full Name', 'text', 'register-name')}${authInput('✉', 'Email Address', 'Email Address', 'email', 'register-email')}</div><div class="auth-grid">${authInput('◎', 'Country', '-- Select Country --', 'text', 'register-country')}${authInput('▯', 'Mobile (+ISD...)', 'Mobile Number', 'tel', 'register-mobile')}</div><div class="auth-field"><label class="auth-label" for="register-password">Password</label><span class="input-group"><span class="input-icon">♧</span><input id="register-password" class="input" type="password" placeholder="Password" autocomplete="new-password" /><button type="button" class="password-toggle" data-toggle-password="register-password" aria-label="Show password">◉</button></span></div><label class="terms"><input id="terms-check" type="checkbox" /> <span>I agree to the <a href="#" data-action="terms">Terms and Conditions</a></span></label><button class="primary-button auth-submit" type="button" data-action="create-account">Create Account</button></form><p class="auth-switch">Already have an account? <a href="#login">Sign In</a></p></div></div>`;
 }
 
 function packagePage(type) {
@@ -113,7 +139,52 @@ function bindPageEvents() {
   document.querySelectorAll('[data-toggle-password]').forEach(button => button.addEventListener('click', () => { const input = document.getElementById(button.dataset.togglePassword); input.type = input.type === 'password' ? 'text' : 'password'; }));
   const qr = document.getElementById('qr'); if (qr) { for (let i = 0; i < 441; i++) { const cell = document.createElement('i'); const x = i % 21, y = Math.floor(i / 21); const finder = (x < 7 && y < 7) || (x > 13 && y < 7) || (x < 7 && y > 13); const inner = (x > 1 && x < 5 && y > 1 && y < 5) || (x > 15 && x < 19 && y > 1 && y < 5) || (x > 1 && x < 5 && y > 15 && y < 19); if (finder ? (x === 0 || x === 6 || y === 0 || y === 6 || x === 14 || x === 20 || y === 0 || y === 6 || y === 14 || y === 20 || inner) : ((x * 7 + y * 11 + x * y) % 5 < 2)) cell.className = 'dark'; qr.appendChild(cell); } }
   document.querySelectorAll('.purchase-button').forEach(button => button.addEventListener('click', () => openPurchase(button.dataset)));
-  document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); const action = button.dataset.action; if (action === 'search') showToast('Search applied'); if (action === 'reset' || action === 'reset-form') showToast('Form reset'); if (action === 'refresh') showToast('Data refreshed'); if (action === 'export') showToast(`${button.textContent} export prepared`); if (action === 'copy-table') showToast('Table copied'); if (action === 'print') window.print(); if (action === 'submit') showToast('Demo submission complete'); if (action === 'confirm-payment') showToast('Payment confirmation received'); if (action === 'forgot') showToast('Password reset flow opened'); if (action === 'terms') showToast('Terms and Conditions are available in the full onboarding flow'); if (action === 'sign-in') { location.hash = 'dashboard'; showToast('Signed in to the Infotech demo'); } if (action === 'create-account') { location.hash = 'login'; showToast('Account created in the Infotech demo'); } }));
+  document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', async event => {
+    event.preventDefault();
+    const action = button.dataset.action;
+    if (action === 'search') showToast('Search applied');
+    if (action === 'reset' || action === 'reset-form') showToast('Form reset');
+    if (action === 'refresh') showToast('Data refreshed');
+    if (action === 'export') showToast(`${button.textContent} export prepared`);
+    if (action === 'copy-table') showToast('Table copied');
+    if (action === 'print') window.print();
+    if (action === 'submit') showToast('Demo submission complete');
+    if (action === 'confirm-payment') showToast('Payment confirmation received');
+    if (action === 'forgot') showToast('Password reset needs a connected email service.');
+    if (action === 'terms') showToast('Please accept the Terms and Conditions to continue.');
+    if (action === 'sign-in') {
+      const userId = fieldValue('login-user').toUpperCase();
+      const password = fieldValue('login-password');
+      const user = storedUser();
+      if (!userId || !password) return authError('Enter your User ID and password.');
+      if (!user) return authError('No local account found. Create an account first.');
+      const passwordHash = await hashPassword(password);
+      if (user.userId !== userId || user.passwordHash !== passwordHash) return authError('The User ID or password is incorrect.');
+      setSession(userId, document.getElementById('remember-me')?.checked);
+      location.hash = 'dashboard';
+      showToast(`Welcome back, ${user.fullName}.`);
+    }
+    if (action === 'create-account') {
+      const fullName = fieldValue('register-name');
+      const email = fieldValue('register-email').toLowerCase();
+      const country = fieldValue('register-country');
+      const mobile = fieldValue('register-mobile');
+      const password = fieldValue('register-password');
+      const referralId = fieldValue('register-referral');
+      if (!fullName || !email || !country || !mobile || !password) return authError('Complete every field to create your account.');
+      if (!/^\S+@\S+\.\S+$/.test(email)) return authError('Enter a valid email address.');
+      if (password.length < 6) return authError('Password must be at least 6 characters.');
+      if (!document.getElementById('terms-check')?.checked) return authError('Please accept the Terms and Conditions.');
+      const existing = storedUser();
+      if (existing?.email === email) return authError('An account with this email already exists.');
+      const userId = `INF${Math.floor(100000 + Math.random() * 900000)}`;
+      const passwordHash = await hashPassword(password);
+      localStorage.setItem(AUTH_KEY, JSON.stringify({ userId, fullName, email, country, mobile, referralId, passwordHash, createdAt: new Date().toISOString() }));
+      clearSession();
+      location.hash = 'login';
+      showToast(`Account created. Your User ID is ${userId}.`);
+    }
+  }));
 }
 
 function openPurchase(data) { document.getElementById('modal-title').textContent = `Purchase ${data.package}`; document.getElementById('modal-copy').textContent = 'This demo keeps the package flow interactive without processing a real payment.'; document.getElementById('modal-summary').innerHTML = `<div><span>Amount</span><strong>₹ ${data.amount}</strong></div><div><span>Duration</span><strong>${data.days} days</strong></div><div><span>Total return</span><strong>₹ ${data.return}</strong></div>`; document.getElementById('modal-backdrop').classList.add('open'); document.getElementById('modal-backdrop').setAttribute('aria-hidden', 'false'); }
