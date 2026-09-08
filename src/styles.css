@@ -118,9 +118,7 @@ h3 { font-size: 18px; }
 .available-fund span { color: var(--green); }
 .package-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
 .package-card { min-height: 260px; padding: 18px 15px 0; }
-.package-card-header { display: flex; align-items: center; gap: 14px; margin: -28px 0 24px; }
-.package-icon { width: 64px; height: 64px; border-radius: 12px; background: linear-gradient(150deg, #087bb9, #053457); display: grid; place-items: center; color: white; border: 1px solid rgba(0, 190, 255, .2); }
-.book-icon { width: 34px; height: 34px; display: block; }
+.package-card-header { display: flex; align-items: center; margin: 0 0 24px; }
 .package-card h3 { font-size: 21px; line-height: 1.15; }
 .package-details { display: grid; gap: 16px; }
 .detail-row { display: flex; justify-content: space-between; gap: 16px; font-weight: 700; }
@@ -299,7 +297,7 @@ body { overflow-x: hidden; }
 .grid { min-width: 0; }
 .package-grid { grid-template-columns: repeat(auto-fit, minmax(248px, 1fr)); gap: 28px 18px; align-items: stretch; }
 .package-card { min-width: 0; display: flex; flex-direction: column; padding-top: 16px; }
-.package-card-header { min-height: 64px; margin: -28px 0 22px; align-items: center; }
+.package-card-header { min-height: 0; margin: 0 0 22px; align-items: center; }
 .package-card h3 { overflow-wrap: anywhere; }
 .package-details { flex: 1; }
 .purchase-button { min-height: 42px; font-weight: 700; }
@@ -317,9 +315,6 @@ body { overflow-x: hidden; }
 .qr-card { width: min(100%, 700px); }
 .address-row button { min-width: 78px; }
 .auth-page { padding: clamp(22px, 5vw, 52px) 18px; }
-
-body.light .package-icon { display: none; }
-body.light .package-card-header { min-height: 0; margin: 0 0 22px; }
 
 body.light .topbar { background: rgba(238, 244, 251, .9); }
 body.light .icon-button, body.light .account-menu { color: var(--text); }
