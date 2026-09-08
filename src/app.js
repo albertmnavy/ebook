@@ -19,7 +19,6 @@ const fdPackages = [
 
 const AUTH_KEY = 'infotech.auth.user';
 const SESSION_KEY = 'infotech.auth.session';
-const DEMO_CREDENTIALS = { userId: 'INF-DEMO', password: 'Infotech@123', fullName: 'Demo User', email: 'demo@infotech.local', country: 'India', mobile: '+91 90000 00000' };
 const publicPages = new Set(['login', 'register']);
 
 function readJson(storage, key) {
@@ -39,10 +38,16 @@ async function hashPassword(password) {
   return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 const APP_STATE_PREFIX = 'infotech.app.';
-function defaultAppState() { return { availableBalance: 50, availableFund: 0, incomeBalance: 50, totalIncome: 50, totalWithdrawal: 0, packages: [], payments: [], transfers: [], swaps: [], withdrawals: [], tickets: [], ledger: [] }; }
+function defaultAppState() { return { availableBalance: 0, availableFund: 0, incomeBalance: 0, totalIncome: 0, totalWithdrawal: 0, packages: [], payments: [], transfers: [], swaps: [], withdrawals: [], tickets: [], ledger: [] }; }
 function appStateKey() { return `${APP_STATE_PREFIX}${currentSession()?.userId || 'guest'}`; }
 function getAppState() { const saved = readJson(localStorage, appStateKey()); return saved ? { ...defaultAppState(), ...saved } : defaultAppState(); }
 function saveAppState(state) { localStorage.setItem(appStateKey(), JSON.stringify(state)); return state; }
+const legacyUser = storedUser();
+if (String(legacyUser?.userId || '').toUpperCase().endsWith('-DEMO')) {
+  localStorage.removeItem(AUTH_KEY);
+  clearSession();
+  localStorage.removeItem(`${APP_STATE_PREFIX}${legacyUser.userId}`);
+}
 function amountValue(value) { const amount = Number(String(value).replace(/,/g, '')); return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0; }
 function displayMoney(value) { return amountValue(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function today() { return new Date().toLocaleDateString('en-GB'); }
@@ -56,15 +61,16 @@ const navList = document.getElementById('nav-list');
 const toastEl = document.getElementById('toast');
 
 const money = (n) => `₹ ${n}`;
-const sectionTitle = (icon, title, extra = '') => `<div class="section-title ${extra}"><span class="title-icon">${icon}</span><h2>${title}</h2></div>`;
-const pageHead = (title, crumb = title, subtitle = '') => `<div class="page-head"><div class="title-wrap"><h1>${title}</h1>${subtitle ? `<p>${subtitle}</p>` : ''}</div><div class="breadcrumb"><span class="home">⌂</span>&nbsp; ${crumb.includes('/') ? crumb.replace('/', ' / ') : crumb}</div></div>`;
+const sectionTitle = (_icon, title, extra = '') => `<div class="section-title ${extra}"><h2>${title}</h2></div>`;
+const pageHead = (title, crumb = title, subtitle = '') => `<div class="page-head"><div class="title-wrap"><h1>${title}</h1>${subtitle ? `<p>${subtitle}</p>` : ''}</div><div class="breadcrumb">${crumb.includes('/') ? crumb.replace('/', ' / ') : crumb}</div></div>`;
 const stat = (label, value, tone = '') => `<div class="stat-card"><div class="stat-label">${label}</div><div class="stat-value ${tone}">${value}</div></div>`;
+const emptyMetric = 'No data yet';
 
 function renderNav() {
   navList.innerHTML = navItems.map(item => {
     const isOpen = app.openGroups.has(item.id);
     const active = app.active === item.id || item.children?.some(c => c.id === app.active);
-    const button = `<button class="nav-item ${active ? 'active' : ''} ${isOpen ? 'open' : ''}" data-nav="${item.id}"><span class="nav-icon icon-${item.tone}">${item.icon}</span><span class="nav-label">${item.label}</span>${item.children ? '<span class="nav-arrow">⌄</span>' : ''}</button>`;
+    const button = `<button class="nav-item ${active ? 'active' : ''} ${isOpen ? 'open' : ''}" data-nav="${item.id}"><span class="nav-label">${item.label}</span>${item.children ? '<span class="nav-arrow">⌄</span>' : ''}</button>`;
     const children = item.children ? `<div class="subnav">${item.children.map(child => `<button class="${app.active === child.id ? 'active' : ''}" data-nav="${child.id}">${child.label}</button>`).join('')}</div>` : '';
     return `<div class="nav-group ${isOpen ? 'expanded' : ''}">${button}${children}</div>`;
   }).join('');
@@ -103,13 +109,13 @@ function dashboardPage() {
   const basicTotal = state.packages.filter(item => item.kind === 'Basic').reduce((sum, item) => sum + amountValue(item.amount), 0);
   const fdTotal = state.packages.filter(item => item.kind === 'FD').reduce((sum, item) => sum + amountValue(item.amount), 0);
   return `${pageHead('Dashboard')}<div class="dashboard-top">
-    <div class="panel profile-card"><div class="profile-emblem">⌂</div><h2>${escapeHtml(user.fullName || 'AMAN')}</h2><div class="profile-meta"><div class="meta-block"><div class="meta-label">User ID</div><div class="meta-value">${escapeHtml(user.userId || 'INF000000')}</div></div><div class="meta-block"><div class="meta-label">Status</div><div class="meta-value value-green">Active</div></div><div class="meta-block"><div class="meta-label">Join Date</div><div class="meta-value">${escapeHtml(user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : today())}</div></div></div><div class="profile-direct">Direct Business : <strong>₹ 0.00</strong></div><div class="referral"><span>🔗 https://www.infotech.online/register?r=${escapeHtml(user.userId || '')}</span><button class="copy-button" data-copy="https://www.infotech.online/register?r=${escapeHtml(user.userId || '')}">Copy</button></div><div class="social-row"><strong>Join Us :</strong><span>◉</span><span>➤</span></div></div>
+    <div class="panel profile-card"><div class="profile-emblem">⌂</div><h2>${escapeHtml(user.fullName || 'Member')}</h2><div class="profile-meta"><div class="meta-block"><div class="meta-label">User ID</div><div class="meta-value">${escapeHtml(user.userId || 'Not assigned')}</div></div><div class="meta-block"><div class="meta-label">Status</div><div class="meta-value value-green">Active</div></div><div class="meta-block"><div class="meta-label">Join Date</div><div class="meta-value">${escapeHtml(user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—')}</div></div></div><div class="profile-direct">Direct business : <strong>${emptyMetric}</strong></div><div class="profile-empty">Referral tools will appear here when your account is connected.</div></div>
     <div class="summary-column"><div class="grid grid-2">${stat('Basic Package', money(displayMoney(basicTotal)))}${stat('FD Package', money(displayMoney(fdTotal)))}</div>${sectionTitle('🎁', 'Balance Summary')}<div class="grid grid-2">${stat('Available Fund', money(displayMoney(state.availableFund)), 'value-green')}${stat('Available Balance', money(displayMoney(state.availableBalance)), 'value-cyan')}${stat('Total Income', money(displayMoney(state.totalIncome)), 'value-green')}${stat('Total Withdrawal', money(displayMoney(state.totalWithdrawal)), 'value-red')}</div></div>
-  </div>${sectionTitle('♣', 'Team Summary', 'cyan')}<div class="grid grid-2 dashboard-grid" style="max-width:690px">${stat('Direct Team', '0', 'value-green')}${stat('Total Team', '0')}</div>${sectionTitle('🎁', 'Basic Income Breakdown')}<div class="grid grid-4">${stat('Joining Bonus', money(displayMoney(state.totalIncome)), 'value-yellow')}${stat('Referral Income', money('0.00'), 'value-blue')}${stat('Today ROI Income', money('0.00'), 'value-green')}${stat('Today Level Income', money('0.00'), 'value-cyan')}${stat('Total ROI Income', money('0.00'), 'value-green')}${stat('Total Level Income', money('0.00'), 'value-cyan')}</div>${sectionTitle('🎁', 'FD Income Breakdown')}<div class="grid grid-4">${stat('Today ROI Income', money('0.00'), 'value-green')}${stat('Today Level Income', money('0.00'), 'value-cyan')}${stat('Total ROI Income', money('0.00'), 'value-green')}${stat('Total Level Income', money('0.00'), 'value-cyan')}${stat('Referral Income', money('0.00'), 'value-blue')}${stat('FD Released', money('0.00'), 'value-blue')}</div>`;
+  </div>${sectionTitle('♣', 'Team Summary', 'cyan')}<div class="grid grid-2 dashboard-grid" style="max-width:690px">${stat('Direct Team', emptyMetric)}${stat('Total Team', emptyMetric)}</div>${sectionTitle('🎁', 'Basic Income Breakdown')}<div class="grid grid-4">${stat('Joining Bonus', emptyMetric)}${stat('Referral Income', emptyMetric)}${stat('Today ROI Income', emptyMetric)}${stat('Today Level Income', emptyMetric)}${stat('Total ROI Income', emptyMetric)}${stat('Total Level Income', emptyMetric)}</div>${sectionTitle('🎁', 'FD Income Breakdown')}<div class="grid grid-4">${stat('Today ROI Income', emptyMetric)}${stat('Today Level Income', emptyMetric)}${stat('Total ROI Income', emptyMetric)}${stat('Total Level Income', emptyMetric)}${stat('Referral Income', emptyMetric)}${stat('FD Released', emptyMetric)}</div>`;
 }
 
 function rechargePage() {
-  return `${pageHead('Recharge', 'Package / Recharge')}<div class="panel qr-card"><h2>Scan QR to Pay</h2><div class="notice">Use your preferred UPI or banking app to scan this payment gateway QR. Your payment will be securely verified after checkout.</div><div class="order-id">Payment Id: IF-PAY_b14fee38</div><div class="qr" id="qr"></div><div class="address-row"><span>Infotech Secure Payment Gateway</span><button data-copy="IF-PAY_b14fee38">Copy ID</button></div><div class="recharge-input"><label class="auth-label" for="recharge-amount">Recharge amount</label><input id="recharge-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter amount" /></div><div class="center"><button class="primary-button" data-action="confirm-payment">Confirm Payment</button></div><div class="notice" style="margin:9px 0 0">In local mode, confirmation records the payment in your account and updates your available balance.</div></div><div style="height:24px"></div>${tablePanel('Payment History', ['SR', 'DATE', 'PAYMENT ID', 'METHOD', 'AMOUNT', 'STATUS'])}`;
+  return `${pageHead('Recharge', 'Package / Recharge')}<div class="panel qr-card"><h2>Scan QR to Pay</h2><div class="notice">Scan the payment gateway QR with your preferred payment app, enter the amount below, then confirm the payment.</div><div class="gateway-label">Payment gateway QR <span>Secure checkout</span></div><div class="qr" id="qr" aria-label="Payment gateway QR code"></div><div class="recharge-input"><label class="auth-label" for="recharge-amount">Recharge amount</label><input id="recharge-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter amount" /></div><div class="center"><button class="primary-button" data-action="confirm-payment">Confirm Payment</button></div><div class="notice" style="margin:9px 0 0">Payment records are stored in your account after confirmation.</div></div><div class="section-gap"></div>${tablePanel('Payment History', ['SR', 'DATE', 'PAYMENT ID', 'METHOD', 'AMOUNT', 'STATUS'])}`;
 }
 
 function authBrand() { return `<div class="auth-brand"><div class="brand-mark">⌂</div><div class="brand-text"><span>INFOTECH</span></div></div>`; }
@@ -120,10 +126,10 @@ function authInput(icon, label, placeholder, type = 'text', id = '') {
   return `<label class="auth-field"><span class="auth-label">${label}</span><span class="input-group"><span class="input-icon">${icon}</span>${control}</span></label>`;
 }
 function loginPage() {
-  return `<div class="auth-page"><div class="auth-card login-card">${authBrand()}<h1>Welcome <span>Back!</span></h1><p class="auth-subtitle">Please sign in to your account to continue.</p><form class="auth-form"><div class="auth-field"><label class="auth-label" for="login-user">User ID</label><span class="input-group"><span class="input-icon">♙</span><input id="login-user" class="input" placeholder="User ID" autocomplete="username" /></span></div><div class="auth-field"><label class="auth-label" for="login-password">Password</label><span class="input-group"><span class="input-icon">♧</span><input id="login-password" class="input" type="password" placeholder="Password" autocomplete="current-password" /><button type="button" class="password-toggle" data-toggle-password="login-password" aria-label="Show password">◉</button></span></div><div class="auth-options"><label class="remember"><input id="remember-me" type="checkbox" /> <span>Remember me</span></label><a href="#" data-action="forgot">Forgot Password?</a></div><button class="primary-button auth-submit" type="button" data-action="sign-in">Sign In</button></form><p class="auth-switch">Don't have an account? <a href="#register">Create an Account</a></p></div></div>`;
+  return `<div class="auth-page"><div class="auth-card login-card">${authBrand()}<h1>Welcome <span>Back!</span></h1><p class="auth-subtitle">Please sign in to your account to continue.</p><form class="auth-form"><div class="auth-field"><label class="auth-label" for="login-user">User ID</label><span class="input-group"><span class="input-icon">♙</span><input id="login-user" class="input" placeholder="User ID" autocomplete="username" /></span></div><div class="auth-field"><label class="auth-label" for="login-password">Password</label><span class="input-group"><span class="input-icon">♧</span><input id="login-password" class="input" type="password" placeholder="Password" autocomplete="current-password" /><button type="button" class="password-toggle" data-toggle-password="login-password" aria-label="Show password">◉</button></span></div><div class="auth-options"><label class="remember"><input id="remember-me" type="checkbox" /> <span>Remember me</span></label></div><button class="primary-button auth-submit" type="button" data-action="sign-in">Sign In</button></form><p class="auth-switch">Don't have an account? <a href="#register">Create an Account</a></p></div></div>`;
 }
 function registerPage() {
-  return `<div class="auth-page"><div class="auth-card register-card">${authBrand()}<h1>Create an <span>Account</span></h1><p class="auth-subtitle">Join us and experience Infotech.</p><form class="auth-form"><div class="auth-field"><label class="auth-label" for="register-referral">Referral ID</label><span class="input-group"><span class="input-icon">#</span><input id="register-referral" class="input" placeholder="Referral ID" /></span></div><div class="auth-grid">${authInput('▣', 'Full Name', 'Full Name', 'text', 'register-name')}${authInput('✉', 'Email Address', 'Email Address', 'email', 'register-email')}</div><div class="auth-grid">${authInput('◎', 'Country', '-- Select Country --', 'text', 'register-country')}${authInput('▯', 'Mobile (+ISD...)', 'Mobile Number', 'tel', 'register-mobile')}</div><div class="auth-field"><label class="auth-label" for="register-password">Password</label><span class="input-group"><span class="input-icon">♧</span><input id="register-password" class="input" type="password" placeholder="Password" autocomplete="new-password" /><button type="button" class="password-toggle" data-toggle-password="register-password" aria-label="Show password">◉</button></span></div><label class="terms"><input id="terms-check" type="checkbox" /> <span>I agree to the <a href="#" data-action="terms">Terms and Conditions</a></span></label><button class="primary-button auth-submit" type="button" data-action="create-account">Create Account</button></form><p class="auth-switch">Already have an account? <a href="#login">Sign In</a></p></div></div>`;
+  return `<div class="auth-page"><div class="auth-card register-card">${authBrand()}<h1>Create an <span>Account</span></h1><p class="auth-subtitle">Join us and experience Infotech.</p><form class="auth-form"><div class="auth-field"><label class="auth-label" for="register-referral">Referral ID</label><span class="input-group"><span class="input-icon">#</span><input id="register-referral" class="input" placeholder="Referral ID" /></span></div><div class="auth-grid">${authInput('▣', 'Full Name', 'Full Name', 'text', 'register-name')}${authInput('✉', 'Email Address', 'Email Address', 'email', 'register-email')}</div><div class="auth-grid">${authInput('◎', 'Country', '-- Select Country --', 'text', 'register-country')}${authInput('▯', 'Mobile (+ISD...)', 'Mobile Number', 'tel', 'register-mobile')}</div><div class="auth-field"><label class="auth-label" for="register-password">Password</label><span class="input-group"><span class="input-icon">♧</span><input id="register-password" class="input" type="password" placeholder="Password" autocomplete="new-password" /><button type="button" class="password-toggle" data-toggle-password="register-password" aria-label="Show password">◉</button></span></div><label class="terms"><input id="terms-check" type="checkbox" /> <span>I agree to the Terms and Conditions</span></label><button class="primary-button auth-submit" type="button" data-action="create-account">Create Account</button></form><p class="auth-switch">Already have an account? <a href="#login">Sign In</a></p></div></div>`;
 }
 
 function packagePage(type) {
@@ -148,8 +154,8 @@ function tablePanel(title, columns, options = {}) {
   const rows = options.rows || rowsForTable(title, columns);
   const totalIndex = columns.findIndex(column => column === 'AMOUNT' || column === 'PAYABLE');
   const total = totalIndex >= 0 ? rows.reduce((sum, row) => sum + amountValue(row[totalIndex]), 0) : 0;
-  const body = rows.length ? rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('') : `<tr class="empty-row"><td colspan="${columns.length}">No data available in table</td></tr>`;
-  return `<div class="panel table-panel"><div class="table-title"><h2><span class="title-icon">▥</span>${title}</h2>${options.total ? `<span class="total-badge">Total : ${displayMoney(total)}</span>` : ''}</div>${filters}<div class="table-toolbar"><div class="entries"><select><option>25</option><option>50</option><option>100</option></select><span>entries per page</span></div><div class="export-buttons"><button data-action="copy-table">Copy</button><button data-action="export">Excel</button><button data-action="export">PDF</button><button data-action="print">Print</button></div></div><div class="table-wrap"><table><thead><tr>${columns.map(col => `<th>${col}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div><div class="table-foot"><span>Showing ${rows.length ? 1 : 0} to ${rows.length} of ${rows.length} entries</span><div class="pagination"><button>«</button><button>‹</button><button>›</button><button>»</button></div></div></div>`;
+  const body = rows.length ? rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('') : `<tr class="empty-row"><td colspan="${columns.length}"><div class="empty-state"><strong>No data available yet</strong><span>Records will appear here once they are added.</span></div></td></tr>`;
+  return `<div class="panel table-panel"><div class="table-title"><h2>${title}</h2>${options.total ? `<span class="total-badge">Total : ${displayMoney(total)}</span>` : ''}</div>${filters}<div class="table-toolbar"><div class="entries"><select><option>25</option><option>50</option><option>100</option></select><span>entries per page</span></div><div class="export-buttons"><button data-action="copy-table">Copy</button><button data-action="print">Print</button></div></div><div class="table-wrap"><table><thead><tr>${columns.map(col => `<th>${col}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div><div class="table-foot"><span>${rows.length ? `Showing 1 to ${rows.length} of ${rows.length} entries` : 'No records to display'}</span></div></div>`;
 }
 
 function incomePage(kind) {
@@ -159,7 +165,7 @@ function incomePage(kind) {
 
 function transferPage() {
   const state = getAppState();
-  return `${pageHead('Transfer Fund', 'Transactional / P2P Transfer')}<div class="form-layout"><div><div class="form-panel"><h2>Transfer Fund</h2><div class="form-field"><label>Available Fund Balance</label><div class="input-prefix"><span class="prefix">₹</span><input class="input" value="${displayMoney(state.availableFund)}" readonly /></div></div><div class="form-field"><label>Target User ID <span>*</span></label><input id="transfer-target" class="input" placeholder="Enter User ID" /></div><div class="form-field"><label>Amount <span>*</span></label><input id="transfer-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter Amount" /></div><div class="form-field"><label>T-Password <span>*</span></label><input id="transfer-password" class="input" placeholder="Enter T-Password" type="password" /></div><a class="link-button" href="#" data-action="forgot">Forgot T-Password?</a><div class="form-actions"><button class="primary-button" data-action="transfer-submit">Submit</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div></div></div>${tablePanel('P2P Transfer History', ['SR', 'DATE', 'TARGET USER', 'AMOUNT', 'STATUS'])}`;
+  return `${pageHead('Transfer Fund', 'Transactional / P2P Transfer')}<div class="form-layout"><div><div class="form-panel"><h2>Transfer Fund</h2><div class="form-field"><label>Available Fund Balance</label><div class="input-prefix"><span class="prefix">₹</span><input class="input" value="${displayMoney(state.availableFund)}" readonly /></div></div><div class="form-field"><label>Target User ID <span>*</span></label><input id="transfer-target" class="input" placeholder="Enter User ID" /></div><div class="form-field"><label>Amount <span>*</span></label><input id="transfer-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter Amount" /></div><div class="form-field"><label>T-Password <span>*</span></label><input id="transfer-password" class="input" placeholder="Enter T-Password" type="password" /></div><div class="form-actions"><button class="primary-button" data-action="transfer-submit">Submit</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div></div></div>${tablePanel('P2P Transfer History', ['SR', 'DATE', 'TARGET USER', 'AMOUNT', 'STATUS'])}`;
 }
 
 function swapPage() {
@@ -258,27 +264,16 @@ function bindPageEvents() {
     if (action === 'export') showToast(`${button.textContent} export prepared`);
     if (action === 'copy-table') return copyTable(button);
     if (action === 'print') window.print();
-    if (action === 'submit') showToast('Demo submission complete');
     if (action === 'confirm-payment') return recordLocalPayment();
     if (action === 'transfer-submit') return submitTransfer();
     if (action === 'swap-submit') return submitSwap();
     if (action === 'withdraw-submit') return submitWithdrawal();
     if (action === 'create-ticket') return createTicket();
-    if (action === 'forgot') showToast('Password reset needs a connected email service.');
-    if (action === 'terms') showToast('Please accept the Terms and Conditions to continue.');
     if (action === 'sign-in') {
       const userId = fieldValue('login-user').toUpperCase();
       const password = fieldValue('login-password');
       const user = storedUser();
       if (!userId || !password) return authError('Enter your User ID and password.');
-      if (userId === DEMO_CREDENTIALS.userId && password === DEMO_CREDENTIALS.password) {
-        const passwordHash = await hashPassword(password);
-        localStorage.setItem(AUTH_KEY, JSON.stringify({ ...DEMO_CREDENTIALS, passwordHash, createdAt: new Date().toISOString() }));
-        if (!readJson(localStorage, `${APP_STATE_PREFIX}${userId}`)) localStorage.setItem(`${APP_STATE_PREFIX}${userId}`, JSON.stringify(defaultAppState()));
-        setSession(userId, document.getElementById('remember-me')?.checked);
-        location.hash = 'dashboard';
-        return showToast(`Welcome back, ${DEMO_CREDENTIALS.fullName}.`);
-      }
       if (!user) return authError('No local account found. Create an account first.');
       const passwordHash = await hashPassword(password);
       if (user.userId !== userId || user.passwordHash !== passwordHash) return authError('The User ID or password is incorrect.');
