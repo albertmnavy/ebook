@@ -1,13 +1,13 @@
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: '⌁', tone: 'blue' },
-  { id: 'recharge', label: 'Recharge', icon: '▰', tone: 'green' },
-  { id: 'packages', label: 'Package Activation', icon: '◆', tone: 'yellow', children: [{ id: 'basic-package', label: 'Basic Package' }, { id: 'fd-package', label: 'FD package' }] },
-  { id: 'downline', label: 'Downline', icon: '♣', tone: 'cyan', children: [{ id: 'direct-team', label: 'Direct Team' }, { id: 'total-team', label: 'Total Team' }] },
-  { id: 'income', label: 'Income', icon: '▣', tone: 'green', children: [{ id: 'basic-roi', label: 'Basic ROI Income' }, { id: 'basic-referral', label: 'Basic Referral Income' }, { id: 'basic-level', label: 'Basic Level Income' }, { id: 'fd-roi', label: 'FD ROI Income' }, { id: 'fd-referral', label: 'FD Referral Income' }, { id: 'fd-level', label: 'FD Level Income' }] },
-  { id: 'transactional', label: 'Transactional', icon: '↻', tone: 'blue', children: [{ id: 'transfer-fund', label: 'P2P Transfer' }, { id: 'swap', label: 'Income to Fund' }, { id: 'withdrawal', label: 'Withdrawal' }] },
-  { id: 'reports', label: 'Reports', icon: '▥', tone: 'yellow', children: [{ id: 'daily-report', label: 'Daily Income Report' }, { id: 'monthly-report', label: 'Monthly Income Report' }, { id: 'fund-summary', label: 'Fund Wallet Summary' }, { id: 'income-summary', label: 'Income Wallet Summary' }] },
-  { id: 'support', label: 'Support Ticket', icon: '♧', tone: 'cyan' },
-  { id: 'logout', label: 'Logout', icon: '↪', tone: 'red' },
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'recharge', label: 'Recharge' },
+  { id: 'packages', label: 'Package Activation', children: [{ id: 'basic-package', label: 'Basic Package' }, { id: 'fd-package', label: 'FD package' }] },
+  { id: 'downline', label: 'Downline', children: [{ id: 'direct-team', label: 'Direct Team' }, { id: 'total-team', label: 'Total Team' }] },
+  { id: 'income', label: 'Income', children: [{ id: 'basic-roi', label: 'Basic ROI Income' }, { id: 'basic-referral', label: 'Basic Referral Income' }, { id: 'basic-level', label: 'Basic Level Income' }, { id: 'fd-roi', label: 'FD ROI Income' }, { id: 'fd-referral', label: 'FD Referral Income' }, { id: 'fd-level', label: 'FD Level Income' }] },
+  { id: 'transactional', label: 'Transactional', children: [{ id: 'transfer-fund', label: 'P2P Transfer' }, { id: 'swap', label: 'Income to Fund' }, { id: 'withdrawal', label: 'Withdrawal' }] },
+  { id: 'reports', label: 'Reports', children: [{ id: 'daily-report', label: 'Daily Income Report' }, { id: 'monthly-report', label: 'Monthly Income Report' }, { id: 'fund-summary', label: 'Fund Wallet Summary' }, { id: 'income-summary', label: 'Income Wallet Summary' }] },
+  { id: 'support', label: 'Support Ticket' },
+  { id: 'logout', label: 'Logout' },
 ];
 
 const basicPackages = [
@@ -253,7 +253,7 @@ function copyTable(button) {
 function bindPageEvents() {
   document.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', () => copyText(button.dataset.copy)));
   document.querySelectorAll('[data-toggle-password]').forEach(button => button.addEventListener('click', () => { const input = document.getElementById(button.dataset.togglePassword); input.type = input.type === 'password' ? 'text' : 'password'; }));
-  const qr = document.getElementById('qr'); if (qr) { for (let i = 0; i < 441; i++) { const cell = document.createElement('i'); const x = i % 21, y = Math.floor(i / 21); const finder = (x < 7 && y < 7) || (x > 13 && y < 7) || (x < 7 && y > 13); const inner = (x > 1 && x < 5 && y > 1 && y < 5) || (x > 15 && x < 19 && y > 1 && y < 5) || (x > 1 && x < 5 && y > 15 && y < 19); if (finder ? (x === 0 || x === 6 || y === 0 || y === 6 || x === 14 || x === 20 || y === 0 || y === 6 || y === 14 || y === 20 || inner) : ((x * 7 + y * 11 + x * y) % 5 < 2)) cell.className = 'dark'; qr.appendChild(cell); } }
+  const qr = document.getElementById('qr'); if (qr) { for (let i = 0; i < 441; i++) { const cell = document.createElement('i'); const x = i % 21, y = Math.floor(i / 21); const finder = (x < 7 && y < 7) || (x > 13 && y < 7) || (x < 7 && y > 13); const inner = (x > 1 && x < 5 && y > 1 && y < 5) || (x > 15 && x < 19 && y > 1 && y < 5) || (x > 1 && x < 5 && y > 15 && y < 19); if (finder ? (x === 0 || x === 6 || y === 0 || y === 6 || x === 14 || x === 20 || y === 0 || y === 6 || y === 14 || y === 20 || inner) : ((x * 7 + y * 11 + x * y) % 5 < 2)) cell.className = 'filled'; qr.appendChild(cell); } }
   document.querySelectorAll('.purchase-button').forEach(button => button.addEventListener('click', () => openPurchase(button.dataset)));
   document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', async event => {
     event.preventDefault();
