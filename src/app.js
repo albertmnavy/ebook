@@ -19,6 +19,7 @@ const fdPackages = [
 
 const AUTH_KEY = 'infotech.auth.user';
 const SESSION_KEY = 'infotech.auth.session';
+const DEMO_CREDENTIALS = { userId: 'INF-DEMO', password: 'Infotech@123', fullName: 'Demo User', email: 'demo@infotech.local', country: 'India', mobile: '+91 90000 00000' };
 const publicPages = new Set(['login', 'register']);
 
 function readJson(storage, key) {
@@ -230,6 +231,14 @@ function bindPageEvents() {
       const password = fieldValue('login-password');
       const user = storedUser();
       if (!userId || !password) return authError('Enter your User ID and password.');
+      if (userId === DEMO_CREDENTIALS.userId && password === DEMO_CREDENTIALS.password) {
+        const passwordHash = await hashPassword(password);
+        localStorage.setItem(AUTH_KEY, JSON.stringify({ ...DEMO_CREDENTIALS, passwordHash, createdAt: new Date().toISOString() }));
+        if (!readJson(localStorage, `${APP_STATE_PREFIX}${userId}`)) localStorage.setItem(`${APP_STATE_PREFIX}${userId}`, JSON.stringify(defaultAppState()));
+        setSession(userId, document.getElementById('remember-me')?.checked);
+        location.hash = 'dashboard';
+        return showToast(`Welcome back, ${DEMO_CREDENTIALS.fullName}.`);
+      }
       if (!user) return authError('No local account found. Create an account first.');
       const passwordHash = await hashPassword(password);
       if (user.userId !== userId || user.passwordHash !== passwordHash) return authError('The User ID or password is incorrect.');
