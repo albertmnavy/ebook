@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="India Finance member dashboard" />
+    <title>India Finance — Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand-row">
+          <div class="brand-mark">⌂</div>
+          <div class="brand-text"><span>INDIA</span> FINANCE</div>
+        </div>
+        <nav class="nav-list" id="nav-list" aria-label="Primary navigation"></nav>
+        <div class="sidebar-footer">© 2026 India Finance</div>
+      </aside>
+
+      <main class="main-area">
+        <header class="topbar">
+          <button class="icon-button menu-button" id="menu-toggle" aria-label="Toggle navigation">☰</button>
+          <button class="icon-button theme-button" id="theme-toggle" aria-label="Toggle theme">◐</button>
+          <div class="account-menu">
+            <div class="account-avatar">⌂</div>
+            <span>AMAN</span>
+            <span class="chevron">⌄</span>
+          </div>
+        </header>
+        <section class="content" id="content"></section>
+        <footer class="site-footer">© 2026 India Finance. All Rights Reserved.</footer>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status"></div>
+    <div class="modal-backdrop" id="modal-backdrop" aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <button class="modal-close" id="modal-close" aria-label="Close">×</button>
+        <div class="eyebrow">PACKAGE ACTIVATION</div>
+        <h2 id="modal-title">Purchase package</h2>
+        <p class="muted" id="modal-copy">Review the package details before confirming your purchase.</p>
+        <div class="modal-summary" id="modal-summary"></div>
+        <button class="primary-button full" id="modal-confirm">Confirm purchase</button>
+      </div>
+    </div>
+    <script src="./app.js"></script>
+  </body>
+</html>
