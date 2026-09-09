@@ -6,7 +6,7 @@ const root = join(process.cwd(), 'src');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
 const server = http.createServer(async (request, response) => {
   const requestPath = new URL(request.url || '/', 'http://localhost').pathname;
-  const relativePath = requestPath === '/' ? 'index.html' : requestPath.replace(/^\/+/, '');
+  const relativePath = requestPath === '/' ? 'index.html' : requestPath === '/admin' || requestPath.startsWith('/admin/') ? 'admin.html' : requestPath.replace(/^\/+/, '');
   const filePath = join(root, relativePath);
   try {
     const body = await readFile(filePath);

@@ -10,55 +10,43 @@ const navItems = [
   { id: 'logout', label: 'Logout' },
 ];
 
-const basicPackages = [
-  ['Base Plan 1', '200.00', '10.00', '25', '250.00'], ['Base Plan 2', '500.00', '25.00', '25', '625.00'], ['Base Plan 3', '1,000.00', '50.00', '25', '1,250.00'], ['Base Plan 4', '2,000.00', '100.00', '25', '2,500.00'], ['Base Plan 5', '5,000.00', '250.00', '25', '6,250.00'], ['Base Plan 6', '10,000.00', '500.00', '25', '12,500.00'], ['Base Plan 7', '50,000.00', '2,500.00', '25', '62,500.00'], ['Base Plan 8', '100,000.00', '5,000.00', '25', '125,000.00'],
-];
-const fdPackages = [
-  ['Base FD Plan 1', '1,000.00', '365', '3,650.00'], ['Prime FD Plan 1', '1,000.00', '515', '7,725.00'], ['Base FD Plan 2', '2,000.00', '365', '7,300.00'], ['Prime FD Plan 2', '2,000.00', '515', '15,450.00'], ['Base FD Plan 3', '5,000.00', '365', '18,250.00'], ['Prime FD Plan 3', '5,000.00', '515', '38,625.00'], ['Base FD Plan 4', '10,000.00', '365', '36,500.00'], ['Prime FD Plan 4', '10,000.00', '515', '77,250.00'], ['Base FD Plan 5', '25,000.00', '365', '91,250.00'], ['Prime FD Plan 5', '25,000.00', '515', '193,125.00'], ['Base FD Plan 6', '50,000.00', '365', '182,500.00'], ['Prime FD Plan 6', '50,000.00', '515', '386,250.00'],
-];
-
-const AUTH_KEY = 'infotech.auth.user';
-const SESSION_KEY = 'infotech.auth.session';
 const publicPages = new Set(['login', 'register']);
-
-function readJson(storage, key) {
-  try { return JSON.parse(storage.getItem(key) || 'null'); } catch { return null; }
-}
-function storedUser() { return readJson(localStorage, AUTH_KEY); }
-function currentSession() { return readJson(sessionStorage, SESSION_KEY) || readJson(localStorage, SESSION_KEY); }
-function clearSession() { sessionStorage.removeItem(SESSION_KEY); localStorage.removeItem(SESSION_KEY); }
-function setSession(userId, remember) {
-  const session = JSON.stringify({ userId, signedInAt: new Date().toISOString() });
-  sessionStorage.setItem(SESSION_KEY, session);
-  if (remember) localStorage.setItem(SESSION_KEY, session); else localStorage.removeItem(SESSION_KEY);
-}
-async function hashPassword(password) {
-  const bytes = new TextEncoder().encode(password);
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, '0')).join('');
-}
-const APP_STATE_PREFIX = 'infotech.app.';
-function defaultAppState() { return { availableBalance: 0, availableFund: 0, incomeBalance: 0, totalIncome: 0, totalWithdrawal: 0, packages: [], payments: [], transfers: [], swaps: [], withdrawals: [], tickets: [], ledger: [] }; }
-function appStateKey() { return `${APP_STATE_PREFIX}${currentSession()?.userId || 'guest'}`; }
-function getAppState() { const saved = readJson(localStorage, appStateKey()); return saved ? { ...defaultAppState(), ...saved } : defaultAppState(); }
-function saveAppState(state) { localStorage.setItem(appStateKey(), JSON.stringify(state)); return state; }
-const legacyUser = storedUser();
-if (String(legacyUser?.userId || '').toUpperCase().endsWith('-DEMO')) {
-  localStorage.removeItem(AUTH_KEY);
-  clearSession();
-  localStorage.removeItem(`${APP_STATE_PREFIX}${legacyUser.userId}`);
-}
+function defaultAppState() { return { availableBalance: 0, availableFund: 0, incomeBalance: 0, totalIncome: 0, totalWithdrawal: 0, directTeamCount: 0, totalTeamCount: 0, team: [], packages: [], payments: [], transfers: [], swaps: [], withdrawals: [], tickets: [], ledger: [] }; }
+function storedUser() { return app.user; }
+function currentSession() { return app.session; }
+function clearSession() { app.user = null; app.session = null; app.csrfToken = ''; app.state = defaultAppState(); }
+function getAppState() { return app.state; }
 function amountValue(value) { const amount = Number(String(value).replace(/,/g, '')); return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0; }
 function displayMoney(value) { return amountValue(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function today() { return new Date().toLocaleDateString('en-GB'); }
-function addLedger(state, type, amount, description) { state.ledger.unshift({ id: `TX-${Date.now()}`, date: today(), type, amount: amountValue(amount), description }); }
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
 function fieldValue(id) { return document.getElementById(id)?.value.trim() || ''; }
 function authError(message) { showToast(message); document.querySelector('.auth-card')?.classList.add('auth-error'); setTimeout(() => document.querySelector('.auth-card')?.classList.remove('auth-error'), 450); }
-const app = { active: location.hash.slice(1) || (currentSession() ? 'dashboard' : 'login'), openGroups: new Set(['packages', 'income', 'transactional', 'reports']) };
+const app = { active: location.hash.slice(1) || 'login', openGroups: new Set(['packages', 'income', 'transactional', 'reports']), user: null, session: null, csrfToken: '', state: defaultAppState(), packagePlans: [], paymentSettings: null };
 const content = document.getElementById('content');
 const navList = document.getElementById('nav-list');
 const toastEl = document.getElementById('toast');
+
+function apiUrl(path) { const configured = String(window.__INFOTECH_API_URL__ || '').replace(/\/$/, ''); const local = (location.protocol === 'file:' || ['localhost', '127.0.0.1'].includes(location.hostname)) && location.port !== '8787' ? 'http://localhost:8787' : ''; return `${configured || local}${path}`; }
+async function api(path, options = {}) {
+  const headers = { ...(options.body ? { 'content-type': 'application/json' } : {}), ...options.headers };
+  if (app.csrfToken && options.method && options.method !== 'GET') headers['x-csrf-token'] = app.csrfToken;
+  const response = await fetch(apiUrl(path), { credentials: 'include', ...options, headers });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) { if (response.status === 401) clearSession(); throw new Error(payload.error || 'The request could not be completed.'); }
+  return payload;
+}
+
+async function hydrateCustomerData() {
+  if (!app.user) return;
+  const [dashboard, recharges, withdrawals, ledger, transfers, swaps, tickets, team, plans, paymentSettings] = await Promise.all([
+    api('/api/me/dashboard'), api('/api/me/recharges'), api('/api/me/withdrawals'), api('/api/me/ledger'), api('/api/me/transfers'), api('/api/me/swaps'), api('/api/me/tickets'), api('/api/me/team'),
+    Promise.all([api('/api/me/packages?kind=BASIC'), api('/api/me/packages?kind=FD')]), api('/api/payment-settings'),
+  ]);
+  const fund = dashboard.balances.find(item => item.type === 'FUND'); const income = dashboard.balances.find(item => item.type === 'INCOME');
+  app.state = { ...defaultAppState(), availableBalance: Number(fund?.available_minor || 0) / 100, availableFund: Number(fund?.available_minor || 0) / 100, incomeBalance: Number(income?.available_minor || 0) / 100, totalIncome: Number(dashboard.income || 0) / 100, totalWithdrawal: withdrawals.data.reduce((sum, item) => sum + Number(item.amount_minor || 0) / 100, 0), directTeamCount: team.directCount, totalTeamCount: team.totalCount, team: team.data, payments: recharges.data.map(item => ({ paymentId: item.payment_reference, date: new Date(item.submitted_at).toLocaleDateString('en-GB'), method: item.payment_method, amount: Number(item.amount_minor) / 100, status: item.status })), transfers: transfers.data.map(item => ({ date: new Date(item.created_at).toLocaleDateString('en-GB'), target: item.recipient_user_id === app.user.userId ? item.sender_user_id : item.recipient_user_id, amount: Number(item.amount_minor) / 100, status: item.status })), swaps: swaps.data.map(item => ({ date: new Date(item.created_at).toLocaleDateString('en-GB'), amount: Number(item.amount_minor) / 100, status: item.status })), withdrawals: withdrawals.data.map(item => ({ date: new Date(item.submitted_at).toLocaleDateString('en-GB'), amount: Number(item.amount_minor) / 100, charges: Number(item.charges_minor) / 100, payable: Number(item.payable_minor) / 100, status: item.status })), tickets: tickets.data.map(item => ({ date: new Date(item.created_at).toLocaleDateString('en-GB'), subject: item.subject, message: '', status: item.status })), ledger: [...ledger.fund, ...ledger.income].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map(item => ({ date: new Date(item.created_at).toLocaleDateString('en-GB'), amount: Number(item.amount_minor) / 100, description: item.description })) };
+  app.packagePlans = plans.flatMap(result => result.data);
+  app.paymentSettings = paymentSettings.settings;
+}
 
 const money = (n) => `₹ ${n}`;
 const sectionTitle = (_icon, title, extra = '') => `<div class="section-title ${extra}"><h2>${title}</h2></div>`;
@@ -82,7 +70,7 @@ function renderNav() {
       renderNav();
       return;
     }
-    if (id === 'logout') { clearSession(); app.active = 'login'; location.hash = 'login'; renderNav(); renderPage(); return; }
+    if (id === 'logout') { void api('/api/auth/logout', { method: 'POST' }).catch(() => {}); clearSession(); app.active = 'login'; location.hash = 'login'; renderNav(); renderPage(); return; }
     toastEl.classList.remove('show');
     app.active = id; location.hash = id; renderNav(); renderPage(); document.querySelector('.sidebar').classList.remove('open');
   }));
@@ -115,7 +103,7 @@ function dashboardPage() {
 }
 
 function rechargePage() {
-  return `${pageHead('Recharge', 'Package / Recharge')}<div class="panel qr-card"><h2>Scan QR to Pay</h2><div class="notice">Scan the payment gateway QR with your preferred payment app, enter the amount below, then confirm the payment.</div><div class="gateway-label">Payment gateway QR <span>Secure checkout</span></div><div class="qr" id="qr" aria-label="Payment gateway QR code"></div><div class="recharge-input"><label class="auth-label" for="recharge-amount">Recharge amount</label><input id="recharge-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter amount" /></div><div class="center"><button class="primary-button" data-action="confirm-payment">Confirm Payment</button></div><div class="notice" style="margin:9px 0 0">Payment records are stored in your account after confirmation.</div></div><div class="section-gap"></div>${tablePanel('Payment History', ['SR', 'DATE', 'PAYMENT ID', 'METHOD', 'AMOUNT', 'STATUS'])}`;
+  return `${pageHead('Recharge', 'Package / Recharge')}<div class="panel qr-card"><h2>Scan QR to Pay</h2><div class="notice">Scan the configured payment QR with your preferred payment app, enter the amount below, then submit your UTR or payment reference for admin verification.</div><div class="gateway-label">Payment QR <span>Manual verification</span></div><div class="qr" id="qr" aria-label="Configured payment QR code"></div><div class="recharge-input"><label class="auth-label" for="recharge-amount">Recharge amount</label><input id="recharge-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter amount" /></div><div class="recharge-input"><label class="auth-label" for="payment-reference">UTR / payment reference</label><input id="payment-reference" class="input" maxlength="160" placeholder="Enter payment reference" /></div><div class="center"><button class="primary-button" data-action="confirm-payment">Submit Recharge Request</button></div><div class="notice" style="margin:9px 0 0">Your request stays pending until the platform owner verifies the payment.</div></div><div class="section-gap"></div>${tablePanel('Recharge History', ['SR', 'DATE', 'PAYMENT ID', 'METHOD', 'AMOUNT', 'STATUS'])}`;
 }
 
 function authBrand() { return `<div class="auth-brand"><div class="brand-mark">⌂</div><div class="brand-text"><span>INFOTECH</span></div></div>`; }
@@ -133,8 +121,9 @@ function registerPage() {
 }
 
 function packagePage(type) {
-  const isFD = type === 'fd-package'; const items = isFD ? fdPackages : basicPackages; const state = getAppState();
-  return `${pageHead(isFD ? 'FD Package' : 'Basic Package', `Package / ${isFD ? 'FD Package' : 'Base Package'}`, '')}<div class="package-header"><div class="available-fund">Available Fund Balance : <span>${displayMoney(state.availableBalance)}</span></div></div><div class="package-grid">${items.map(item => isFD ? `<article class="package-card"><div class="package-card-header"><h3>${item[0]}</h3></div><div class="package-details"><div class="detail-row"><span>Amount :</span><span>${item[1]}</span></div><div class="detail-row"><span>Days :</span><span>${item[2]}</span></div><div class="detail-row"><span>Total Return :</span><span>${item[3]}</span></div></div><button class="purchase-button" data-kind="FD" data-package="${item[0]}" data-amount="${item[1]}" data-days="${item[2]}" data-return="${item[3]}">Purchase</button></article>` : `<article class="package-card"><div class="package-card-header"><h3>${item[0]}</h3></div><div class="package-details"><div class="detail-row"><span>Amount :</span><span>${item[1]}</span></div><div class="detail-row"><span>Daily ROI :</span><span>${item[2]}</span></div><div class="detail-row"><span>Days :</span><span>${item[3]}</span></div><div class="detail-row"><span>Total Return :</span><span>${item[4]}</span></div></div><button class="purchase-button" data-kind="Basic" data-package="${item[0]}" data-amount="${item[1]}" data-days="${item[3]}" data-return="${item[4]}">Purchase</button></article>`).join('')}</div>`;
+  const isFD = type === 'fd-package'; const plans = app.packagePlans.filter(plan => plan.kind === (isFD ? 'FD' : 'BASIC')); const state = getAppState();
+  const cards = plans.length ? plans.map(plan => `<article class="package-card"><div class="package-card-header"><h3>${escapeHtml(plan.name)}</h3></div><div class="package-details"><div class="detail-row"><span>Amount :</span><span>${displayMoney(Number(plan.amount_minor) / 100)}</span></div>${!isFD ? `<div class="detail-row"><span>Daily ROI :</span><span>${displayMoney(Number(plan.daily_roi_minor) / 100)}</span></div>` : ''}<div class="detail-row"><span>Days :</span><span>${plan.duration_days}</span></div><div class="detail-row"><span>Total Return :</span><span>${displayMoney(Number(plan.total_return_minor) / 100)}</span></div></div><button class="purchase-button" data-plan-id="${plan.id}" data-package="${escapeHtml(plan.name)}" data-amount="${Number(plan.amount_minor) / 100}" data-days="${plan.duration_days}" data-return="${Number(plan.total_return_minor) / 100}">Purchase</button></article>`).join('') : '<div class="profile-empty">Package plans are not available yet.</div>';
+  return `${pageHead(isFD ? 'FD Package' : 'Basic Package', `Package / ${isFD ? 'FD Package' : 'Base Package'}`, '')}<div class="package-header"><div class="available-fund">Available Fund Balance : <span>${displayMoney(state.availableBalance)}</span></div></div><div class="package-grid">${cards}</div>`;
 }
 
 function rowsForTable(title, columns) {
@@ -183,46 +172,33 @@ function reportPage(kind) {
 }
 
 function supportPage() { return `${pageHead('Support Ticket', 'Support Ticket')}<div class="form-panel"><h2>Need help?</h2><div class="form-field"><label>Subject</label><input id="ticket-subject" class="input" placeholder="What can we help with?" /></div><div class="form-field"><label>Message</label><textarea id="ticket-message" class="input" rows="6" placeholder="Describe your question"></textarea></div><div class="form-actions"><button class="primary-button" data-action="create-ticket">Submit Ticket</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div><div style="margin-top:24px">${tablePanel('My Support Tickets', ['SR', 'DATE', 'SUBJECT', 'MESSAGE', 'STATUS'], { filters: false })}</div>`; }
-function teamPage(title) { return `${pageHead(title, `Downline / ${title}`)}<div class="grid grid-2" style="max-width:720px">${stat('Direct Team', '0', 'value-cyan')}${stat('Total Team', '0', 'value-green')}</div><div style="margin-top:24px">${tablePanel(title, ['SR', 'USER ID', 'NAME', 'JOIN DATE', 'STATUS'], { filters: false })}</div>`; }
+function teamPage(title) { const state = getAppState(); const direct = title === 'Direct Team'; const members = state.team.filter(item => direct ? item.level === 1 : true); const rows = members.map((item, index) => [index + 1, item.user_id, item.full_name, new Date(item.created_at).toLocaleDateString('en-GB'), item.status]); return `${pageHead(title, `Downline / ${title}`)}<div class="grid grid-2" style="max-width:720px">${stat('Direct Team', String(state.directTeamCount), 'value-cyan')}${stat('Total Team', String(state.totalTeamCount), 'value-green')}</div><div style="margin-top:24px">${tablePanel(title, ['SR', 'USER ID', 'NAME', 'JOIN DATE', 'STATUS'], { filters: false, rows })}</div>`; }
 
 const pages = { login: loginPage, register: registerPage, dashboard: dashboardPage, recharge: rechargePage, 'basic-package': () => packagePage('basic-package'), 'fd-package': () => packagePage('fd-package'), 'direct-team': () => teamPage('Direct Team'), 'total-team': () => teamPage('Total Team'), 'transfer-fund': transferPage, swap: swapPage, withdrawal: withdrawalPage, support: supportPage, 'basic-roi': () => incomePage('basic-roi'), 'basic-referral': () => incomePage('basic-referral'), 'basic-level': () => incomePage('basic-level'), 'fd-roi': () => incomePage('fd-roi'), 'fd-referral': () => incomePage('fd-referral'), 'fd-level': () => incomePage('fd-level'), 'daily-report': () => reportPage('daily-report'), 'monthly-report': () => reportPage('monthly-report'), 'fund-summary': () => reportPage('fund-summary'), 'income-summary': () => reportPage('income-summary') };
 
 function refreshApp() { renderNav(); renderPage(); }
-function recordLocalPayment() {
-  const amount = amountValue(fieldValue('recharge-amount'));
-  if (amount <= 0) return authError('Enter a recharge amount first.');
-  const state = getAppState();
-  const paymentId = `IF-PAY-${Date.now().toString().slice(-8)}`;
-  state.availableBalance += amount;
-  state.payments.unshift({ paymentId, date: today(), method: 'Payment Gateway QR', amount, status: 'Verified' });
-  addLedger(state, 'Recharge', amount, 'Payment gateway recharge');
-  saveAppState(state);
-  refreshApp();
-  showToast(`Payment verified. ₹ ${displayMoney(amount)} added to your balance.`);
+function idempotencyKey() { return window.crypto?.randomUUID?.() || `request-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+async function submitRecharge() {
+  const amount = amountValue(fieldValue('recharge-amount')); const paymentReference = fieldValue('payment-reference');
+  if (amount <= 0 || !paymentReference) return authError('Enter the amount and payment reference.');
+  try { await api('/api/me/recharges', { method: 'POST', body: JSON.stringify({ amount, paymentReference, idempotencyKey: idempotencyKey() }) }); await hydrateCustomerData(); refreshApp(); showToast('Recharge request submitted for admin verification.'); } catch (error) { authError(error.message); }
 }
-function submitTransfer() {
-  const target = fieldValue('transfer-target').toUpperCase(); const amount = amountValue(fieldValue('transfer-amount')); const password = fieldValue('transfer-password'); const state = getAppState();
+async function submitTransfer() {
+  const target = fieldValue('transfer-target').toUpperCase(); const amount = amountValue(fieldValue('transfer-amount')); const password = fieldValue('transfer-password');
   if (!target || !amount || !password) return authError('Complete the transfer form.');
-  if (amount > state.availableFund) return authError('Insufficient fund balance for this transfer.');
-  state.availableFund -= amount; state.transfers.unshift({ date: today(), target, amount, status: 'Completed' }); addLedger(state, 'Transfer', amount, `P2P transfer to ${target}`); saveAppState(state); refreshApp(); showToast(`₹ ${displayMoney(amount)} transferred to ${target}.`);
+  try { await api('/api/me/transfers', { method: 'POST', body: JSON.stringify({ recipientUserId: target, amount, idempotencyKey: idempotencyKey() }) }); await hydrateCustomerData(); refreshApp(); showToast(`₹ ${displayMoney(amount)} transferred to ${target}.`); } catch (error) { authError(error.message); }
 }
-function submitSwap() {
-  const amount = amountValue(fieldValue('swap-amount')); const state = getAppState();
-  if (!amount) return authError('Enter an amount to swap.');
-  if (amount > state.incomeBalance) return authError('Insufficient income balance.');
-  state.incomeBalance -= amount; state.availableFund += amount; state.swaps.unshift({ date: today(), amount, status: 'Completed' }); addLedger(state, 'Swap', amount, 'Income transferred to fund'); saveAppState(state); refreshApp(); showToast(`₹ ${displayMoney(amount)} moved to fund balance.`);
+async function submitSwap() {
+  const amount = amountValue(fieldValue('swap-amount')); if (!amount) return authError('Enter an amount to swap.');
+  try { await api('/api/me/swaps', { method: 'POST', body: JSON.stringify({ amount, idempotencyKey: idempotencyKey() }) }); await hydrateCustomerData(); refreshApp(); showToast(`₹ ${displayMoney(amount)} moved to fund balance.`); } catch (error) { authError(error.message); }
 }
-function submitWithdrawal() {
-  const amount = amountValue(fieldValue('withdraw-amount')); const details = fieldValue('withdraw-details'); const state = getAppState();
-  if (!amount || !details) return authError('Enter an amount and payment details.');
-  if (amount > state.availableFund) return authError('Insufficient fund balance for this withdrawal.');
-  const charges = Math.round(amount * 0.02 * 100) / 100; const payable = amount - charges;
-  state.availableFund -= amount; state.totalWithdrawal += amount; state.withdrawals.unshift({ date: today(), amount, charges, payable, status: 'Pending' }); addLedger(state, 'Withdrawal', amount, `Withdrawal to ${details}`); saveAppState(state); refreshApp(); showToast(`Withdrawal request for ₹ ${displayMoney(payable)} submitted.`);
+async function submitWithdrawal() {
+  const amount = amountValue(fieldValue('withdraw-amount')); const details = fieldValue('withdraw-details'); if (!amount || !details) return authError('Enter an amount and payment details.');
+  try { await api('/api/me/withdrawals', { method: 'POST', body: JSON.stringify({ amount, paymentDetails: details, idempotencyKey: idempotencyKey() }) }); await hydrateCustomerData(); refreshApp(); showToast('Withdrawal request submitted for admin review.'); } catch (error) { authError(error.message); }
 }
-function createTicket() {
-  const subject = fieldValue('ticket-subject'); const message = fieldValue('ticket-message');
-  if (!subject || !message) return authError('Add a subject and message before submitting.');
-  const state = getAppState(); state.tickets.unshift({ date: today(), subject, message, status: 'Open' }); saveAppState(state); refreshApp(); showToast('Support ticket created.');
+async function createTicket() {
+  const subject = fieldValue('ticket-subject'); const message = fieldValue('ticket-message'); if (!subject || !message) return authError('Add a subject and message before submitting.');
+  try { await api('/api/me/tickets', { method: 'POST', body: JSON.stringify({ subject, message }) }); await hydrateCustomerData(); refreshApp(); showToast('Support ticket created.'); } catch (error) { authError(error.message); }
 }
 
 function copyText(value) {
@@ -253,7 +229,7 @@ function copyTable(button) {
 function bindPageEvents() {
   document.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', () => copyText(button.dataset.copy)));
   document.querySelectorAll('[data-toggle-password]').forEach(button => button.addEventListener('click', () => { const input = document.getElementById(button.dataset.togglePassword); input.type = input.type === 'password' ? 'text' : 'password'; }));
-  const qr = document.getElementById('qr'); if (qr) { for (let i = 0; i < 441; i++) { const cell = document.createElement('i'); const x = i % 21, y = Math.floor(i / 21); const finder = (x < 7 && y < 7) || (x > 13 && y < 7) || (x < 7 && y > 13); const inner = (x > 1 && x < 5 && y > 1 && y < 5) || (x > 15 && x < 19 && y > 1 && y < 5) || (x > 1 && x < 5 && y > 15 && y < 19); if (finder ? (x === 0 || x === 6 || y === 0 || y === 6 || x === 14 || x === 20 || y === 0 || y === 6 || y === 14 || y === 20 || inner) : ((x * 7 + y * 11 + x * y) % 5 < 2)) cell.className = 'filled'; qr.appendChild(cell); } }
+  const qr = document.getElementById('qr'); if (qr && app.paymentSettings?.qr_payload) { const image = document.createElement('img'); image.src = app.paymentSettings.qr_payload; image.alt = 'Configured payment QR'; image.loading = 'lazy'; qr.appendChild(image); } else if (qr) qr.innerHTML = '<span>Payment QR is not configured yet.</span>';
   document.querySelectorAll('.purchase-button').forEach(button => button.addEventListener('click', () => openPurchase(button.dataset)));
   document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', async event => {
     event.preventDefault();
@@ -264,22 +240,16 @@ function bindPageEvents() {
     if (action === 'export') showToast(`${button.textContent} export prepared`);
     if (action === 'copy-table') return copyTable(button);
     if (action === 'print') window.print();
-    if (action === 'confirm-payment') return recordLocalPayment();
+    if (action === 'confirm-payment') return submitRecharge();
     if (action === 'transfer-submit') return submitTransfer();
     if (action === 'swap-submit') return submitSwap();
     if (action === 'withdraw-submit') return submitWithdrawal();
     if (action === 'create-ticket') return createTicket();
     if (action === 'sign-in') {
-      const userId = fieldValue('login-user').toUpperCase();
+      const userId = fieldValue('login-user');
       const password = fieldValue('login-password');
-      const user = storedUser();
       if (!userId || !password) return authError('Enter your User ID and password.');
-      if (!user) return authError('No local account found. Create an account first.');
-      const passwordHash = await hashPassword(password);
-      if (user.userId !== userId || user.passwordHash !== passwordHash) return authError('The User ID or password is incorrect.');
-      setSession(userId, document.getElementById('remember-me')?.checked);
-      location.hash = 'dashboard';
-      showToast(`Welcome back, ${user.fullName}.`);
+      try { const data = await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: userId, password }) }); app.user = data.user; app.session = { userId: data.user.userId, signedInAt: new Date().toISOString() }; app.csrfToken = data.csrfToken; await hydrateCustomerData(); location.hash = 'dashboard'; showToast(`Welcome back, ${data.user.fullName}.`); } catch (error) { authError(error.message); }
     }
     if (action === 'create-account') {
       const fullName = fieldValue('register-name');
@@ -290,17 +260,9 @@ function bindPageEvents() {
       const referralId = fieldValue('register-referral');
       if (!fullName || !email || !country || !mobile || !password) return authError('Complete every field to create your account.');
       if (!/^\S+@\S+\.\S+$/.test(email)) return authError('Enter a valid email address.');
-      if (password.length < 6) return authError('Password must be at least 6 characters.');
+      if (password.length < 8) return authError('Password must be at least 8 characters.');
       if (!document.getElementById('terms-check')?.checked) return authError('Please accept the Terms and Conditions.');
-      const existing = storedUser();
-      if (existing?.email === email) return authError('An account with this email already exists.');
-      const userId = `INF${Math.floor(100000 + Math.random() * 900000)}`;
-      const passwordHash = await hashPassword(password);
-      localStorage.setItem(AUTH_KEY, JSON.stringify({ userId, fullName, email, country, mobile, referralId, passwordHash, createdAt: new Date().toISOString() }));
-      localStorage.setItem(`${APP_STATE_PREFIX}${userId}`, JSON.stringify(defaultAppState()));
-      clearSession();
-      location.hash = 'login';
-      showToast(`Account created. Your User ID is ${userId}.`);
+      try { const data = await api('/api/auth/register', { method: 'POST', body: JSON.stringify({ fullName, email, country, mobile, referralId, password }) }); location.hash = 'login'; showToast(`Account created. Your User ID is ${data.user.userId}.`); } catch (error) { authError(error.message); }
     }
   }));
 }
@@ -315,15 +277,14 @@ document.querySelector('.main-area').addEventListener('click', event => {
 });
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-backdrop').addEventListener('click', (event) => { if (event.target.id === 'modal-backdrop') closeModal(); });
-document.getElementById('modal-confirm').addEventListener('click', () => {
+document.getElementById('modal-confirm').addEventListener('click', async () => {
   const purchase = app.pendingPurchase;
   if (!purchase) return closeModal();
-  const state = getAppState(); const amount = amountValue(purchase.amount);
-  if (amount > state.availableBalance) { closeModal(); return authError('Insufficient balance. Use Recharge before purchasing this package.'); }
-  state.availableBalance -= amount;
-  state.packages.unshift({ kind: purchase.kind, name: purchase.package, amount, days: purchase.days, totalReturn: amountValue(purchase.return), purchasedAt: today() });
-  addLedger(state, 'Package', amount, `${purchase.package} purchased`);
-  saveAppState(state); closeModal(); refreshApp(); showToast(`${purchase.package} activated successfully.`);
+  try { await api('/api/me/package-activations', { method: 'POST', body: JSON.stringify({ packagePlanId: purchase.planId, idempotencyKey: idempotencyKey() }) }); await hydrateCustomerData(); closeModal(); refreshApp(); showToast(`${purchase.package} activated successfully.`); } catch (error) { closeModal(); authError(error.message); }
 });
-window.addEventListener('hashchange', () => { app.active = location.hash.slice(1) || 'dashboard'; renderNav(); renderPage(); });
-renderNav(); renderPage();
+window.addEventListener('hashchange', () => { app.active = location.hash.slice(1) || (app.user ? 'dashboard' : 'login'); renderNav(); renderPage(); });
+async function boot() {
+  try { const session = await api('/api/auth/me'); app.user = session.user; app.session = { userId: session.user.userId }; app.csrfToken = session.csrfToken; await hydrateCustomerData(); } catch { clearSession(); }
+  app.active = location.hash.slice(1) || (app.user ? 'dashboard' : 'login'); renderNav(); renderPage();
+}
+void boot();
