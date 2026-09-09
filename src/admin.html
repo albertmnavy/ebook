@@ -8,55 +8,7 @@
     <link rel="stylesheet" href="/admin.css" />
   </head>
   <body>
-    <main id="admin-root" class="admin-root">
-      <section id="login-view" class="admin-login" aria-labelledby="login-title">
-        <div class="login-card">
-          <p class="eyebrow">Infotech</p>
-          <h1 id="login-title">Administrator sign in</h1>
-          <p class="muted">Use your platform owner account to access private controls.</p>
-          <form id="login-form" class="stack-form">
-            <label>Email<input name="email" type="email" autocomplete="username" required /></label>
-            <label>Password<input name="password" type="password" autocomplete="current-password" required /></label>
-            <button class="button primary" type="submit">Sign in</button>
-            <p id="login-error" class="form-error" role="alert"></p>
-          </form>
-        </div>
-      </section>
-
-      <section id="app-view" class="admin-app" hidden>
-        <aside class="admin-sidebar">
-          <div class="brand"><span>Infotech</span><small>Admin</small></div>
-          <nav id="admin-nav" aria-label="Admin navigation">
-            <a href="/admin" data-route="dashboard">Overview</a>
-            <a href="/admin/users" data-route="users">Users</a>
-            <a href="/admin/recharges" data-route="recharges">Recharge requests</a>
-            <a href="/admin/accounts" data-route="accounts">Accounts & balances</a>
-            <a href="/admin/transactions" data-route="transactions">Transactions</a>
-            <a href="/admin/transfers" data-route="transfers">P2P transfers</a>
-            <a href="/admin/swaps" data-route="swaps">Income swaps</a>
-            <a href="/admin/withdrawals" data-route="withdrawals">Withdrawals</a>
-            <a href="/admin/packages" data-route="packages">Package plans</a>
-            <a href="/admin/referrals" data-route="referrals">Referrals</a>
-            <a href="/admin/rewards" data-route="rewards">Rewards</a>
-            <a href="/admin/notifications" data-route="notifications">Notifications</a>
-            <a href="/admin/support" data-route="support">Support</a>
-            <a href="/admin/reports" data-route="reports">Reports</a>
-            <a href="/admin/audit-logs" data-route="audit-logs">Audit logs</a>
-            <a href="/admin/payment-settings" data-route="payment-settings">Payment settings</a>
-            <a href="/admin/settings" data-route="settings">Settings</a>
-          </nav>
-          <button id="logout-button" class="button quiet" type="button">Sign out</button>
-        </aside>
-        <div class="admin-content">
-          <header class="admin-header">
-            <div><p class="eyebrow">Private administration</p><h1 id="page-title">Overview</h1></div>
-            <div id="admin-user" class="admin-user"></div>
-          </header>
-          <div id="page-status" class="page-status" role="status"></div>
-          <section id="page-content" class="page-content"></section>
-        </div>
-      </section>
-    </main>
+    <main id="admin-root" class="admin-root"></main>
     <script src="/runtime-config.js"></script>
     <script type="module" src="/admin.js"></script>
   </body>
