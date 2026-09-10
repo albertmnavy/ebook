@@ -90,6 +90,12 @@ h3 { font-size: 19px; line-height: 1.2; }
 .profile-direct { max-width: 490px; margin: 0 auto 12px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; color: #60758c; font-weight: 650; }
 .profile-direct strong { color: #193b5e; }
 .profile-empty { max-width: 490px; margin: 0 auto; padding: 14px 16px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--surface-muted); color: #6a8098; font-size: 14px; }
+.transaction-password-setup { display: grid; gap: 10px; max-width: 490px; margin: 14px auto 0; padding: 16px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--surface-muted); text-align: left; }
+.transaction-password-setup strong { color: #193b5e; }
+.transaction-password-setup p { margin: 0; color: #6a8098; font-size: 13px; }
+.transaction-password-setup .primary-button { width: 100%; }
+.payment-info { display: grid; gap: 6px; margin: 14px 0; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--surface-muted); color: #526f8b; font-size: 13px; }
+.payment-info strong { color: #193b5e; }
 .summary-column { display: flex; min-width: 0; flex-direction: column; }
 .summary-column > .grid:last-child { margin-top: auto; }
 .dashboard-grid { max-width: 690px; }

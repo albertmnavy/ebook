@@ -14,14 +14,14 @@ const publicPages = new Set(['login', 'register']);
 function defaultAppState() { return { availableBalance: 0, availableFund: 0, incomeBalance: 0, totalIncome: 0, totalWithdrawal: 0, activations: 0, directTeamCount: 0, totalTeamCount: 0, team: [], payments: [], transfers: [], swaps: [], withdrawals: [], tickets: [], ledger: [] }; }
 function storedUser() { return app.user; }
 function currentSession() { return app.session; }
-function clearSession() { app.user = null; app.session = null; app.csrfToken = ''; app.state = defaultAppState(); }
+function clearSession() { app.user = null; app.session = null; app.csrfToken = ''; app.state = defaultAppState(); app.transactionPasswordConfigured = false; }
 function getAppState() { return app.state; }
 function amountValue(value) { const amount = Number(String(value).replace(/,/g, '')); return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0; }
 function displayMoney(value) { return amountValue(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
 function fieldValue(id) { return document.getElementById(id)?.value.trim() || ''; }
 function authError(message) { showToast(message); document.querySelector('.auth-card')?.classList.add('auth-error'); setTimeout(() => document.querySelector('.auth-card')?.classList.remove('auth-error'), 450); }
-const app = { active: location.hash.slice(1) || 'login', openGroups: new Set(['packages', 'downline', 'income', 'transactional', 'reports']), user: null, session: null, csrfToken: '', state: defaultAppState(), packagePlans: [], paymentSettings: null };
+const app = { active: location.hash.slice(1) || 'login', openGroups: new Set(['packages', 'downline', 'income', 'transactional', 'reports']), user: null, session: null, csrfToken: '', state: defaultAppState(), packagePlans: [], paymentSettings: null, transactionPasswordConfigured: false };
 const content = document.getElementById('content');
 const navList = document.getElementById('nav-list');
 const toastEl = document.getElementById('toast');
@@ -38,14 +38,15 @@ async function api(path, options = {}) {
 
 async function hydrateCustomerData() {
   if (!app.user) return;
-  const [dashboard, recharges, withdrawals, ledger, transfers, swaps, tickets, team, plans, paymentSettings] = await Promise.all([
+  const [dashboard, recharges, withdrawals, ledger, transfers, swaps, tickets, team, plans, paymentSettings, transactionPasswordStatus] = await Promise.all([
     api('/api/me/dashboard'), api('/api/me/recharges'), api('/api/me/withdrawals'), api('/api/me/ledger'), api('/api/me/transfers'), api('/api/me/swaps'), api('/api/me/tickets'), api('/api/me/team'),
-    api('/api/me/packages?kind=BASIC'), api('/api/payment-settings'),
+    api('/api/me/packages?kind=BASIC'), api('/api/payment-settings'), api('/api/me/transaction-password'),
   ]);
   const fund = dashboard.balances.find(item => item.type === 'FUND'); const income = dashboard.balances.find(item => item.type === 'INCOME');
   app.state = { ...defaultAppState(), availableBalance: Number(fund?.available_minor || 0) / 100, availableFund: Number(fund?.available_minor || 0) / 100, incomeBalance: Number(income?.available_minor || 0) / 100, totalIncome: Number(dashboard.income || 0) / 100, totalWithdrawal: withdrawals.data.reduce((sum, item) => sum + Number(item.amount_minor || 0) / 100, 0), activations: Number(dashboard.activations || 0), directTeamCount: team.directCount, totalTeamCount: team.totalCount, team: team.data, payments: recharges.data.map(item => ({ paymentId: item.payment_reference, date: new Date(item.submitted_at).toLocaleDateString('en-GB'), method: item.payment_method, amount: Number(item.amount_minor) / 100, status: item.status })), transfers: transfers.data.map(item => ({ date: new Date(item.created_at).toLocaleDateString('en-GB'), target: item.recipient_user_id === app.user.userId ? item.sender_user_id : item.recipient_user_id, amount: Number(item.amount_minor) / 100, status: item.status })), swaps: swaps.data.map(item => ({ date: new Date(item.created_at).toLocaleDateString('en-GB'), amount: Number(item.amount_minor) / 100, status: item.status })), withdrawals: withdrawals.data.map(item => ({ date: new Date(item.submitted_at).toLocaleDateString('en-GB'), amount: Number(item.amount_minor) / 100, charges: Number(item.charges_minor) / 100, payable: Number(item.payable_minor) / 100, status: item.status })), tickets: tickets.data.map(item => ({ date: new Date(item.created_at).toLocaleDateString('en-GB'), subject: item.subject, message: '', status: item.status })), ledger: [...ledger.fund, ...ledger.income].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map(item => ({ date: new Date(item.created_at).toLocaleDateString('en-GB'), amount: Number(item.amount_minor) / 100, description: item.description })) };
   app.packagePlans = plans.data;
   app.paymentSettings = paymentSettings.settings;
+  app.transactionPasswordConfigured = Boolean(transactionPasswordStatus.configured);
 }
 
 const money = (n) => `₹ ${n}`;
@@ -94,14 +95,16 @@ function renderPage() {
 function dashboardPage() {
   const state = getAppState();
   const user = storedUser() || {};
+  const transactionPasswordPanel = app.transactionPasswordConfigured ? '<div class="profile-empty">Transaction password is configured for sensitive financial actions.</div>' : '<div class="transaction-password-setup"><strong>Set transaction password</strong><p>Required for transfers, swaps, and withdrawals.</p><input id="transaction-password-setup" class="input" type="password" autocomplete="new-password" placeholder="At least 8 characters" /><button class="primary-button" data-action="set-transaction-password">Save transaction password</button></div>';
   return `${pageHead('Dashboard')}<div class="dashboard-top">
-    <div class="panel profile-card"><div class="profile-emblem">⌂</div><h2>${escapeHtml(user.fullName || 'Member')}</h2><div class="profile-meta"><div class="meta-block"><div class="meta-label">User ID</div><div class="meta-value">${escapeHtml(user.userId || 'Not assigned')}</div></div><div class="meta-block"><div class="meta-label">Status</div><div class="meta-value value-green">Active</div></div><div class="meta-block"><div class="meta-label">Join Date</div><div class="meta-value">${escapeHtml(user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—')}</div></div></div><div class="profile-direct">Direct business : <strong>${emptyMetric}</strong></div><div class="profile-empty">Referral tools will appear here when your account is connected.</div></div>
+    <div class="panel profile-card"><div class="profile-emblem">⌂</div><h2>${escapeHtml(user.fullName || 'Member')}</h2><div class="profile-meta"><div class="meta-block"><div class="meta-label">User ID</div><div class="meta-value">${escapeHtml(user.userId || 'Not assigned')}</div></div><div class="meta-block"><div class="meta-label">Status</div><div class="meta-value value-green">Active</div></div><div class="meta-block"><div class="meta-label">Join Date</div><div class="meta-value">${escapeHtml(user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—')}</div></div></div><div class="profile-direct">Direct business : <strong>${emptyMetric}</strong></div><div class="profile-empty">Referral tools will appear here when your account is connected.</div>${transactionPasswordPanel}</div>
     <div class="summary-column"><div class="grid grid-2">${stat('Basic Package', `${state.activations} active`)}${stat('Income Balance', money(displayMoney(state.incomeBalance)), 'value-green')}</div>${sectionTitle('', 'Balance Summary')}<div class="grid grid-2">${stat('Available Fund', money(displayMoney(state.availableFund)), 'value-green')}${stat('Available Balance', money(displayMoney(state.availableBalance)), 'value-cyan')}${stat('Total Income', money(displayMoney(state.totalIncome)), 'value-green')}${stat('Total Withdrawal', money(displayMoney(state.totalWithdrawal)), 'value-red')}</div></div>
   </div>${sectionTitle('', 'Team Summary', 'cyan')}<div class="grid grid-2 dashboard-grid" style="max-width:690px">${stat('Direct Team', String(state.directTeamCount))}${stat('Total Team', String(state.totalTeamCount))}</div>${sectionTitle('', 'Basic Income Breakdown')}<div class="grid grid-4">${stat('Joining Bonus', emptyMetric)}${stat('Referral Income', emptyMetric)}${stat('Today ROI Income', emptyMetric)}${stat('Today Level Income', emptyMetric)}${stat('Total ROI Income', emptyMetric)}${stat('Total Level Income', emptyMetric)}</div>`;
 }
 
 function rechargePage() {
-  return `${pageHead('Recharge', 'Package / Recharge')}<div class="panel qr-card"><h2>Scan QR to Pay</h2><div class="notice">Scan the configured payment QR with your preferred payment app, enter the amount below, then submit your UTR or payment reference for admin verification.</div><div class="gateway-label">Payment QR <span>Manual verification</span></div><div class="qr" id="qr" aria-label="Configured payment QR code"></div><div class="recharge-input"><label class="auth-label" for="recharge-amount">Recharge amount</label><input id="recharge-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter amount" /></div><div class="recharge-input"><label class="auth-label" for="payment-reference">UTR / payment reference</label><input id="payment-reference" class="input" maxlength="160" placeholder="Enter payment reference" /></div><div class="center"><button class="primary-button" data-action="confirm-payment">Submit Recharge Request</button></div><div class="notice" style="margin:9px 0 0">Your request stays pending until the platform owner verifies the payment.</div></div><div class="section-gap"></div>${tablePanel('Payment History', ['SR', 'DATE', 'PAYMENT ID', 'METHOD', 'AMOUNT', 'STATUS'])}`;
+  const settings = app.paymentSettings || {}; const enabled = settings.enabled === true; const paymentInfo = enabled && (settings.payment_identifier || settings.account_name || settings.instructions) ? `<div class="payment-info">${settings.payment_identifier ? `<strong>Payment identifier: ${escapeHtml(settings.payment_identifier)}</strong>` : ''}${settings.account_name ? `<span>Account: ${escapeHtml(settings.account_name)}</span>` : ''}${settings.instructions ? `<span>${escapeHtml(settings.instructions)}</span>` : ''}</div>` : '<div class="notice">Manual recharge is not enabled yet. Payment details will appear here after admin configuration.</div>'; const disabled = enabled ? '' : ' disabled';
+  return `${pageHead('Recharge', 'Package / Recharge')}<div class="panel qr-card"><h2>Scan QR to Pay</h2>${paymentInfo}<div class="gateway-label">Payment QR <span>Manual verification</span></div><div class="qr" id="qr" aria-label="Configured payment QR code"></div><div class="recharge-input"><label class="auth-label" for="recharge-amount">Recharge amount</label><input id="recharge-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter amount"${disabled} /></div><div class="recharge-input"><label class="auth-label" for="payment-reference">UTR / payment reference</label><input id="payment-reference" class="input" maxlength="160" placeholder="Enter payment reference"${disabled} /></div><div class="center"><button class="primary-button" data-action="confirm-payment"${disabled}>Submit Recharge Request</button></div><div class="notice" style="margin:9px 0 0">Your request stays pending until the platform owner verifies the payment.</div></div><div class="section-gap"></div>${tablePanel('Payment History', ['SR', 'DATE', 'PAYMENT ID', 'METHOD', 'AMOUNT', 'STATUS'])}`;
 }
 
 function authBrand() { return `<div class="auth-brand"><div class="brand-mark">⌂</div><div class="brand-text"><span>INFOTECH</span></div></div>`; }
@@ -173,11 +176,11 @@ function transferPage() {
 
 function swapPage() {
   const state = getAppState();
-  return `${pageHead('Swap', 'Transactional / Transfer to Fund')}<div class="form-layout"><div><div class="form-panel"><h2>Transfer To Fund</h2><div class="form-field"><label>Income Balance</label><input class="input" value="${displayMoney(state.incomeBalance)}" readonly /></div><div class="form-field"><label>Amount</label><input id="swap-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter amount" /></div><div class="form-actions"><button class="primary-button" data-action="swap-submit">Submit</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div></div></div><div style="margin-top:24px">${tablePanel('Transfer Income To Fund Details', ['SR', 'DATE', 'AMOUNT', 'STATUS'])}</div>`;
+  return `${pageHead('Swap', 'Transactional / Transfer to Fund')}<div class="form-layout"><div><div class="form-panel"><h2>Transfer To Fund</h2><div class="form-field"><label>Income Balance</label><input class="input" value="${displayMoney(state.incomeBalance)}" readonly /></div><div class="form-field"><label>Amount</label><input id="swap-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter amount" /></div><div class="form-field"><label>T-Password <span>*</span></label><input id="swap-password" class="input" type="password" autocomplete="current-password" placeholder="Enter T-Password" /></div><div class="form-actions"><button class="primary-button" data-action="swap-submit">Submit</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div></div></div><div style="margin-top:24px">${tablePanel('Transfer Income To Fund Details', ['SR', 'DATE', 'AMOUNT', 'STATUS'])}</div>`;
 }
 
 function withdrawalPage() {
-  return `${pageHead('Fund Withdrawal', 'Transactional / Fund Withdrawal')}<div class="timing-card panel"><div class="timing-icon">↗</div><p>Withdrawal timing is 10:00 AM to 2:00 PM.</p></div><div class="form-panel" style="margin-bottom:24px"><h2>Request Withdrawal</h2><div class="form-field"><label>Available Fund Balance</label><input class="input" value="${displayMoney(getAppState().availableFund)}" readonly /></div><div class="form-field"><label>Amount <span>*</span></label><input id="withdraw-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter amount" /></div><div class="form-field"><label>Payment Details <span>*</span></label><input id="withdraw-details" class="input" placeholder="UPI ID or bank reference" /></div><div class="form-actions"><button class="primary-button" data-action="withdraw-submit">Submit Request</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div>${tablePanel('Withdrawal Request Details', ['SR', 'DATE', 'AMOUNT', 'CHARGES', 'PAYABLE', 'STATUS'])}`;
+  return `${pageHead('Fund Withdrawal', 'Transactional / Fund Withdrawal')}<div class="timing-card panel"><div class="timing-icon">↗</div><p>Withdrawal timing is 10:00 AM to 2:00 PM.</p></div><div class="form-panel" style="margin-bottom:24px"><h2>Request Withdrawal</h2><div class="form-field"><label>Available Fund Balance</label><input class="input" value="${displayMoney(getAppState().availableFund)}" readonly /></div><div class="form-field"><label>Amount <span>*</span></label><input id="withdraw-amount" class="input" type="number" min="1" step="0.01" placeholder="Enter amount" /></div><div class="form-field"><label>Payment Details <span>*</span></label><input id="withdraw-details" class="input" placeholder="UPI ID or bank reference" /></div><div class="form-field"><label>T-Password <span>*</span></label><input id="withdraw-password" class="input" type="password" autocomplete="current-password" placeholder="Enter T-Password" /></div><div class="form-actions"><button class="primary-button" data-action="withdraw-submit">Submit Request</button><button class="secondary-button" data-action="reset-form">Reset</button></div></div>${tablePanel('Withdrawal Request Details', ['SR', 'DATE', 'AMOUNT', 'CHARGES', 'PAYABLE', 'STATUS'])}`;
 }
 
 function reportPage(kind) {
@@ -199,15 +202,19 @@ async function submitRecharge() {
 async function submitTransfer() {
   const target = fieldValue('transfer-target').toUpperCase(); const amount = amountValue(fieldValue('transfer-amount')); const password = fieldValue('transfer-password');
   if (!target || !amount || !password) return authError('Complete the transfer form.');
-  try { await api('/api/me/transfers', { method: 'POST', body: JSON.stringify({ recipientUserId: target, amount, idempotencyKey: idempotencyKey() }) }); await hydrateCustomerData(); refreshApp(); showToast(`₹ ${displayMoney(amount)} transferred to ${target}.`); } catch (error) { authError(error.message); }
+  try { await api('/api/me/transfers', { method: 'POST', body: JSON.stringify({ recipientUserId: target, amount, transactionPassword: password, idempotencyKey: idempotencyKey() }) }); await hydrateCustomerData(); refreshApp(); showToast(`₹ ${displayMoney(amount)} transferred to ${target}.`); } catch (error) { authError(error.message); }
 }
 async function submitSwap() {
-  const amount = amountValue(fieldValue('swap-amount')); if (!amount) return authError('Enter an amount to swap.');
-  try { await api('/api/me/swaps', { method: 'POST', body: JSON.stringify({ amount, idempotencyKey: idempotencyKey() }) }); await hydrateCustomerData(); refreshApp(); showToast(`₹ ${displayMoney(amount)} moved to fund balance.`); } catch (error) { authError(error.message); }
+  const amount = amountValue(fieldValue('swap-amount')); const password = fieldValue('swap-password'); if (!amount || !password) return authError('Enter an amount and T-Password.');
+  try { await api('/api/me/swaps', { method: 'POST', body: JSON.stringify({ amount, transactionPassword: password, idempotencyKey: idempotencyKey() }) }); await hydrateCustomerData(); refreshApp(); showToast(`₹ ${displayMoney(amount)} moved to fund balance.`); } catch (error) { authError(error.message); }
 }
 async function submitWithdrawal() {
-  const amount = amountValue(fieldValue('withdraw-amount')); const details = fieldValue('withdraw-details'); if (!amount || !details) return authError('Enter an amount and payment details.');
-  try { await api('/api/me/withdrawals', { method: 'POST', body: JSON.stringify({ amount, paymentDetails: details, idempotencyKey: idempotencyKey() }) }); await hydrateCustomerData(); refreshApp(); showToast('Withdrawal request submitted for admin review.'); } catch (error) { authError(error.message); }
+  const amount = amountValue(fieldValue('withdraw-amount')); const details = fieldValue('withdraw-details'); const password = fieldValue('withdraw-password'); if (!amount || !details || !password) return authError('Enter an amount, payment details, and T-Password.');
+  try { await api('/api/me/withdrawals', { method: 'POST', body: JSON.stringify({ amount, paymentDetails: details, transactionPassword: password, idempotencyKey: idempotencyKey() }) }); await hydrateCustomerData(); refreshApp(); showToast('Withdrawal request submitted for admin review.'); } catch (error) { authError(error.message); }
+}
+async function setTransactionPassword() {
+  const password = fieldValue('transaction-password-setup'); if (password.length < 8) return authError('Transaction password must be at least 8 characters.');
+  try { await api('/api/me/transaction-password', { method: 'POST', body: JSON.stringify({ transactionPassword: password }) }); await hydrateCustomerData(); refreshApp(); showToast('Transaction password saved securely.'); } catch (error) { authError(error.message); }
 }
 async function createTicket() {
   const subject = fieldValue('ticket-subject'); const message = fieldValue('ticket-message'); if (!subject || !message) return authError('Add a subject and message before submitting.');
@@ -242,7 +249,7 @@ function copyTable(button) {
 function bindPageEvents() {
   document.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', () => copyText(button.dataset.copy)));
   document.querySelectorAll('[data-toggle-password]').forEach(button => button.addEventListener('click', () => { const input = document.getElementById(button.dataset.togglePassword); input.type = input.type === 'password' ? 'text' : 'password'; }));
-  const qr = document.getElementById('qr'); if (qr && app.paymentSettings?.qr_payload) { const image = document.createElement('img'); image.src = app.paymentSettings.qr_payload; image.alt = 'Configured payment QR'; image.loading = 'lazy'; qr.appendChild(image); } else if (qr) qr.innerHTML = '<span>Payment QR is not configured yet.</span>';
+  const qr = document.getElementById('qr'); if (qr && app.paymentSettings?.enabled === true && app.paymentSettings?.qr_payload) { const image = document.createElement('img'); image.src = app.paymentSettings.qr_payload; image.alt = 'Configured payment QR'; image.loading = 'lazy'; qr.appendChild(image); } else if (qr) qr.innerHTML = '<span>Payment QR is not configured yet.</span>';
   document.querySelectorAll('.purchase-button').forEach(button => button.addEventListener('click', () => openPurchase(button.dataset)));
   document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', async event => {
     event.preventDefault();
@@ -257,6 +264,7 @@ function bindPageEvents() {
     if (action === 'transfer-submit') return submitTransfer();
     if (action === 'swap-submit') return submitSwap();
     if (action === 'withdraw-submit') return submitWithdrawal();
+    if (action === 'set-transaction-password') return setTransactionPassword();
     if (action === 'create-ticket') return createTicket();
     if (action === 'sign-in') {
       const userId = fieldValue('login-user');
@@ -281,7 +289,7 @@ function bindPageEvents() {
 }
 
 function openPurchase(data) { app.pendingPurchase = data; document.getElementById('modal-title').textContent = `Purchase ${data.package}`; document.getElementById('modal-copy').textContent = 'Review the package details before confirming this purchase.'; document.getElementById('modal-summary').innerHTML = `<div><span>Amount</span><strong>₹ ${data.amount}</strong></div><div><span>Duration</span><strong>${data.days} days</strong></div><div><span>Total return</span><strong>₹ ${data.return}</strong></div>`; document.getElementById('modal-backdrop').classList.add('open'); document.getElementById('modal-backdrop').setAttribute('aria-hidden', 'false'); }
-function closeModal() { document.getElementById('modal-backdrop').classList.remove('open'); document.getElementById('modal-backdrop').setAttribute('aria-hidden', 'true'); }
+function closeModal() { document.getElementById('modal-backdrop').classList.remove('open'); document.getElementById('modal-backdrop').setAttribute('aria-hidden', 'true'); const password = document.getElementById('purchase-transaction-password'); if (password) password.value = ''; }
 function showToast(text) { toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toastEl.classList.remove('show'), 2600); }
 
 document.getElementById('menu-toggle').addEventListener('click', () => document.querySelector('.sidebar').classList.toggle('open'));
@@ -293,7 +301,9 @@ document.getElementById('modal-backdrop').addEventListener('click', (event) => {
 document.getElementById('modal-confirm').addEventListener('click', async () => {
   const purchase = app.pendingPurchase;
   if (!purchase) return closeModal();
-  try { await api('/api/me/package-activations', { method: 'POST', body: JSON.stringify({ packagePlanId: purchase.planId, idempotencyKey: idempotencyKey() }) }); await hydrateCustomerData(); closeModal(); refreshApp(); showToast(`${purchase.package} activated successfully.`); } catch (error) { closeModal(); authError(error.message); }
+  const transactionPasswordValue = fieldValue('purchase-transaction-password');
+  if (!transactionPasswordValue) return authError('Enter your T-Password to activate this package.');
+  try { await api('/api/me/package-activations', { method: 'POST', body: JSON.stringify({ packagePlanId: purchase.planId, transactionPassword: transactionPasswordValue, idempotencyKey: idempotencyKey() }) }); await hydrateCustomerData(); closeModal(); refreshApp(); showToast(`${purchase.package} activated successfully.`); } catch (error) { closeModal(); authError(error.message); }
 });
 window.addEventListener('hashchange', () => { app.active = location.hash.slice(1) || (app.user ? 'dashboard' : 'login'); renderNav(); renderPage(); });
 async function boot() {

@@ -11,6 +11,8 @@
     "start": "node server/index.mjs",
     "start:backend": "node server/index.mjs",
     "migrate": "node server/migrate.mjs",
+    "admin:migrate:hardening": "node server/migrate-hardening.mjs",
+    "roi:run": "node server/roi-run.mjs",
     "admin:migrate": "node server/migrate.mjs",
     "admin:seed": "node server/seed-admin.mjs",
     "admin:seed-plans": "node server/seed-plans.mjs",
