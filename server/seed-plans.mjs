@@ -13,7 +13,7 @@ const fd = [
 for (const [kind, plans] of [['BASIC', basic], ['FD', fd]]) for (const plan of plans) {
   const [name, amount, durationDays, dailyRoi, totalReturn] = kind === 'BASIC' ? [plan[0], plan[1], plan[2], null, null] : plan;
   const amountMinor = amount * 100;
-  const dailyRoiMinor = kind === 'BASIC' ? Math.round(amountMinor * 500 / 10_000) : dailyRoi * 100;
+  const dailyRoiMinor = kind === 'BASIC' ? Math.round(amountMinor * 300 / 10_000) : dailyRoi * 100;
   const totalReturnMinor = kind === 'BASIC' ? dailyRoiMinor * durationDays : totalReturn * 100;
   await query('INSERT INTO package_plans (kind, name, amount_minor, daily_roi_minor, duration_days, total_return_minor) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (kind, name) DO UPDATE SET amount_minor = EXCLUDED.amount_minor, daily_roi_minor = EXCLUDED.daily_roi_minor, duration_days = EXCLUDED.duration_days, total_return_minor = EXCLUDED.total_return_minor, updated_at = NOW()', [kind, name, amountMinor, dailyRoiMinor, durationDays, totalReturnMinor]);
 }
