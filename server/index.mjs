@@ -36,7 +36,7 @@ app.use((request, response, next) => {
 function failure(message, status = 400) { const error = new Error(message); error.status = status; return error; }
 function text(value, label, max = 5000) { if (typeof value !== 'string' || !value.trim() || value.length > max) throw failure(`${label} is required.`); return value.trim(); }
 function money(value, label = 'Amount') { const number = Number(value); if (!Number.isFinite(number) || number <= 0 || number > 1_000_000_000) throw failure(`${label} must be a positive amount.`); return Math.round(number * 100); }
-const BASIC_ROI_BPS = 200;
+const BASIC_ROI_BPS = 500;
 function basicRoiMinor(amountMinor) { return Math.round(Number(amountMinor) * BASIC_ROI_BPS / 10_000); }
 function packageView(plan) {
   if (plan.kind !== 'BASIC') return plan;
