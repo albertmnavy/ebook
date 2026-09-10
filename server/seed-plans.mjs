@@ -2,7 +2,7 @@ import { pool, query } from './db.mjs';
 
 if (!pool) throw new Error('DATABASE_URL is not configured.');
 const basic = [
-  ['My Love', 1500, 25], ['Rich Poor Difference', 2500, 25], ['The Money Mindset', 4000, 25], ['Success Habits', 6000, 25],
+  ['The Investor’s Mindset', 1500, 25], ['Rich Poor Difference', 2500, 25], ['The Money Mindset', 4000, 25], ['Smart Investing', 6000, 25],
   ['The Power of Discipline', 8000, 25], ['Financial Freedom', 10000, 25],
 ];
 const fd = [
