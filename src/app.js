@@ -121,10 +121,10 @@ function registerPage() {
 }
 
 const basicBookCovers = [
-  { title: 'My Love', subtitle: 'A journey to a deeper connection', cover: '/assets/package-covers/my-love.jpg' },
+  { title: 'The Investor’s Mindset', subtitle: 'Build a disciplined path to long-term wealth', cover: '/assets/package-covers/investors-mindset.jpg' },
   { title: 'Rich Poor Difference', subtitle: 'Mindset creates reality', cover: '/assets/package-covers/rich-poor-difference.jpg' },
   { title: 'The Money Mindset', subtitle: 'Build wealth with intention', cover: '/assets/package-covers/money-mindset.jpg' },
-  { title: 'Success Habits', subtitle: 'Small actions. Lasting progress.', cover: '/assets/package-covers/success-habits.jpg' },
+  { title: 'Smart Investing', subtitle: 'Make informed decisions for lasting growth', cover: '/assets/package-covers/smart-investing.jpg' },
   { title: 'The Power of Discipline', subtitle: 'Focus is a daily decision', cover: '/assets/package-covers/power-of-discipline.jpg' },
   { title: 'Financial Freedom', subtitle: 'Make room for a bigger life', cover: '/assets/package-covers/financial-freedom.jpg' },
 ];
@@ -135,7 +135,7 @@ function packagePage(type) {
     const book = !isFD ? basicBookCovers[index] : null;
     const displayTitle = book?.title || plan.name;
     const cover = book ? `<div class="package-cover"><img src="${book.cover}" alt="${escapeHtml(book.title)} book cover" loading="lazy" width="512" height="768" /><div class="package-cover-shade"></div><div class="package-cover-copy"><span>INFOTECH FINANCE SERIES</span><strong>${escapeHtml(book.title)}</strong><small>${escapeHtml(book.subtitle)}</small></div></div>` : '';
-    const purchase = `<button class="purchase-button" data-plan-id="${plan.id}" data-package="${escapeHtml(plan.name)}" data-amount="${Number(plan.amount_minor) / 100}" data-days="${plan.duration_days}" data-return="${Number(plan.total_return_minor) / 100}">Purchase</button>`;
+    const purchase = `<button class="purchase-button" data-plan-id="${plan.id}" data-package="${escapeHtml(displayTitle)}" data-amount="${Number(plan.amount_minor) / 100}" data-days="${plan.duration_days}" data-return="${Number(plan.total_return_minor) / 100}">Purchase</button>`;
     const details = `<div class="package-details"><div class="detail-row"><span>Amount :</span><span>${displayMoney(Number(plan.amount_minor) / 100)}</span></div>${!isFD ? `<div class="detail-row"><span>Daily ROI :</span><span>${displayMoney(Number(plan.daily_roi_minor) / 100)}</span></div>` : ''}<div class="detail-row"><span>Days :</span><span>${plan.duration_days}</span></div><div class="detail-row"><span>Total Return :</span><span>${displayMoney(Number(plan.total_return_minor) / 100)}</span></div></div>`;
     if (!book) return `<article class="package-card"><div class="package-card-header"><h3>${escapeHtml(plan.name)}</h3></div>${details}${purchase}</article>`;
     return `<article class="package-card book-package-card">${cover}<div class="package-card-body"><div class="package-card-header"><div><span class="package-plan-label">Plan ${String(index + 1).padStart(2, '0')}</span><h3>${escapeHtml(displayTitle)}</h3></div><span class="package-tag">Basic</span></div>${details}${purchase}</div></article>`;
