@@ -26,7 +26,16 @@ const content = document.getElementById('content');
 const navList = document.getElementById('nav-list');
 const toastEl = document.getElementById('toast');
 
-function apiUrl(path) { const configured = String(window.__INFOTECH_API_URL__ || '').replace(/\/$/, ''); const local = (location.protocol === 'file:' || ['localhost', '127.0.0.1'].includes(location.hostname)) && location.port !== '8787' ? 'http://localhost:8787' : ''; return `${configured || local}${path}`; }
+function apiUrl(path) {
+  const configured = String(window.__INFOTECH_API_URL__ || '').replace(/\/$/, '');
+  const local = (location.protocol === 'file:' || ['localhost', '127.0.0.1'].includes(location.hostname)) && location.port !== '8787' ? 'http://localhost:8787' : '';
+  const isHostedCustomer = location.protocol === 'https:' && !location.hostname.endsWith('.railway.app');
+
+  // Keep customer sessions same-origin on Vercel. The Vercel rewrite proxies
+  // /api/* to Railway, so the HttpOnly cookie is first-party to the customer UI.
+  if (isHostedCustomer) return path;
+  return `${configured || local}${path}`;
+}
 async function api(path, options = {}) {
   const headers = { ...(options.body ? { 'content-type': 'application/json' } : {}), ...options.headers };
   if (app.csrfToken && options.method && options.method !== 'GET') headers['x-csrf-token'] = app.csrfToken;
