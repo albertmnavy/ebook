@@ -258,7 +258,7 @@ function copyTable(button) {
 function bindPageEvents() {
   document.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', () => copyText(button.dataset.copy)));
   document.querySelectorAll('[data-toggle-password]').forEach(button => button.addEventListener('click', () => { const input = document.getElementById(button.dataset.togglePassword); input.type = input.type === 'password' ? 'text' : 'password'; }));
-  const qr = document.getElementById('qr'); if (qr && app.paymentSettings?.enabled === true && app.paymentSettings?.qr_payload) { const image = document.createElement('img'); image.src = app.paymentSettings.qr_payload; image.alt = 'Configured payment QR'; image.loading = 'lazy'; qr.appendChild(image); } else if (qr) qr.innerHTML = '<span>Payment QR is not configured yet.</span>';
+  const qr = document.getElementById('qr'); if (qr && app.paymentSettings?.enabled === true && app.paymentSettings?.qr_image_url) { const image = document.createElement('img'); image.src = apiUrl(app.paymentSettings.qr_image_url); image.alt = 'Configured payment QR'; image.loading = 'lazy'; qr.appendChild(image); } else if (qr) qr.innerHTML = '<span>Payment QR is not configured yet.</span>';
   document.querySelectorAll('.purchase-button').forEach(button => button.addEventListener('click', () => openPurchase(button.dataset)));
   document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', async event => {
     event.preventDefault();

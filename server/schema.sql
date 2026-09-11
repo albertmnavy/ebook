@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS support_messages (
 );
 
 CREATE TABLE IF NOT EXISTS payment_settings (
-  id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1), qr_payload TEXT NOT NULL DEFAULT '', instructions TEXT NOT NULL DEFAULT '', account_name TEXT NOT NULL DEFAULT '', minimum_amount_minor BIGINT NOT NULL DEFAULT 1 CHECK (minimum_amount_minor > 0), maximum_amount_minor BIGINT CHECK (maximum_amount_minor IS NULL OR maximum_amount_minor >= minimum_amount_minor), enabled BOOLEAN NOT NULL DEFAULT FALSE, updated_by UUID REFERENCES users(id), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1), qr_payload TEXT NOT NULL DEFAULT '', qr_image_key TEXT NOT NULL DEFAULT '', qr_image_filename TEXT NOT NULL DEFAULT '', instructions TEXT NOT NULL DEFAULT '', account_name TEXT NOT NULL DEFAULT '', minimum_amount_minor BIGINT NOT NULL DEFAULT 1 CHECK (minimum_amount_minor > 0), maximum_amount_minor BIGINT CHECK (maximum_amount_minor IS NULL OR maximum_amount_minor >= minimum_amount_minor), enabled BOOLEAN NOT NULL DEFAULT FALSE, updated_by UUID REFERENCES users(id), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (

@@ -11,6 +11,8 @@ import { runBasicRoiAccrual } from './roi-worker.mjs';
 import { applyConfiguredReferralIncome } from './referrals.mjs';
 import { runAdminBootstrapIfEnabled } from './bootstrap-admin.mjs';
 import { calculateWithdrawalAccounting, reviewWithdrawalRequest } from './withdrawal-accounting.mjs';
+import multer from 'multer';
+import { deleteQrImage, getQrImage, putQrImage, qrStorageReady, validateQrImage } from './qr-storage.mjs';
 
 assertProductionConfig();
 await runAdminBootstrapIfEnabled();
@@ -50,7 +52,6 @@ function money(value, label = 'Amount') {
   return Number(minor);
 }
 function transactionPassword(value) { if (typeof value !== 'string' || value.length < 8 || value.length > 200) throw failure('Transaction password verification failed.', 401); return value; }
-function qrImageData(value) { return typeof value === 'string' && /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(value); }
 const BASIC_ROI_BPS = 300;
 function basicRoiMinor(amountMinor) { return Math.round(Number(amountMinor) * BASIC_ROI_BPS / 10_000); }
 function packageView(plan) {
@@ -81,6 +82,35 @@ function credentialRateKey(request) { return `${request.ip}:${request.admin?.id 
 function credentialRateAllowed(request) { const keyValue = credentialRateKey(request); const now = Date.now(); const recent = (credentialChangeAttempts.get(keyValue) || []).filter((time) => now - time < 15 * 60 * 1000); if (recent.length >= 5) return false; recent.push(now); credentialChangeAttempts.set(keyValue, recent); return true; }
 function resetCredentialRate(request) { credentialChangeAttempts.delete(credentialRateKey(request)); }
 function secretText(value, label = 'Password') { if (typeof value !== 'string' || !value.length || value.length > 200) throw failure(`${label} is required.`); return value; }
+
+const qrUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+});
+function receiveQrImage(request, response, next) {
+  return qrUpload.single('file')(request, response, (error) => {
+    if (!error) return next();
+    if (error.code === 'LIMIT_FILE_SIZE') return next(failure('QR image must be 5 MB or smaller.'));
+    return next(failure('Upload a PNG, JPG, or WEBP image.'));
+  });
+}
+function paymentSettingsView(row, includeAdminFields = false) {
+  if (!row) return { enabled: false, qr_image_url: '' };
+  const result = {
+    id: row.id,
+    instructions: row.instructions,
+    account_name: row.account_name,
+    payment_identifier: row.payment_identifier,
+    minimum_amount_minor: row.minimum_amount_minor,
+    maximum_amount_minor: row.maximum_amount_minor,
+    enabled: Boolean(row.enabled && row.qr_image_key && qrStorageReady()),
+    qr_image_url: row.qr_image_key ? '/api/payment-qr' : '',
+    qr_image_filename: row.qr_image_filename || '',
+    updated_at: row.updated_at,
+  };
+  if (includeAdminFields) result.qr_configured = Boolean(row.qr_image_key);
+  return result;
+}
 
 async function verifyTransactionPassword(client, userId, value) {
   const password = transactionPassword(value);
@@ -152,7 +182,19 @@ app.post('/api/auth/login', login);
 app.get('/api/auth/me', requireUser, (request, response) => response.json({ user: userView(request.auth), csrfToken: request.auth.csrf_token, expiresAt: request.auth.expires_at }));
 app.post('/api/auth/logout', requireAuth, requireCsrf, async (request, response, next) => { try { await destroySession(request); clearSessionCookie(response); return response.json({ ok: true }); } catch (error) { return next(error); } });
 
-app.get('/api/payment-settings', async (request, response, next) => { try { const result = await query('SELECT qr_payload, instructions, account_name, payment_identifier, minimum_amount_minor, maximum_amount_minor, enabled FROM payment_settings WHERE id = 1'); return response.json({ settings: result.rows[0] || { enabled: false } }); } catch (error) { return next(error); } });
+app.get('/api/payment-settings', async (request, response, next) => { try { const result = await query('SELECT instructions, account_name, payment_identifier, minimum_amount_minor, maximum_amount_minor, enabled, qr_image_key, qr_image_filename, updated_at FROM payment_settings WHERE id = 1'); return response.json({ settings: paymentSettingsView(result.rows[0]) }); } catch (error) { return next(error); } });
+app.get('/api/payment-qr', async (request, response, next) => {
+  try {
+    const result = await query('SELECT enabled, qr_image_key FROM payment_settings WHERE id = 1');
+    const row = result.rows[0];
+    if (!row?.enabled || !row.qr_image_key || !qrStorageReady()) return response.status(404).json({ error: 'Payment QR is not configured.' });
+    const image = await getQrImage(row.qr_image_key);
+    response.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.type(image.contentType);
+    return response.send(image.body);
+  } catch (error) { return next(error); }
+});
 
 app.use('/api/me', requireUser, requireCsrf);
 app.get('/api/me/transaction-password', async (request, response, next) => { try { const result = await query('SELECT transaction_password_hash IS NOT NULL AS configured FROM users WHERE id = $1', [request.auth.id]); return response.json({ configured: Boolean(result.rows[0]?.configured) }); } catch (error) { return next(error); } });
@@ -244,8 +286,55 @@ app.patch('/api/admin/users/:id/status', async (request, response, next) => { tr
 app.get('/api/admin/recharges', async (request, response, next) => { try { const result = await query(`SELECT r.id, r.amount_minor, r.payment_reference, r.payment_method, r.status, r.submitted_at, r.reviewed_at, r.admin_note, u.user_id, u.email, u.full_name FROM recharge_requests r JOIN users u ON u.id = r.user_id ORDER BY r.submitted_at DESC LIMIT 100`); return response.json({ data: result.rows }); } catch (error) { return next(error); } });
 app.patch('/api/admin/recharges/:id/review', async (request, response, next) => { try { const status = String(request.body?.status || ''); const note = String(request.body?.note || '').trim(); if (!['APPROVED', 'REJECTED'].includes(status)) throw failure('Invalid recharge review status.'); const result = await transaction(async (client) => { const requestResult = await client.query('SELECT * FROM recharge_requests WHERE id = $1 FOR UPDATE', [request.params.id]); const recharge = requestResult.rows[0]; if (!recharge) throw failure('Recharge request not found.', 404); if (recharge.status !== 'PENDING') return recharge; if (status === 'REJECTED') { const rejected = await client.query('UPDATE recharge_requests SET status = \'REJECTED\', reviewed_at = NOW(), reviewed_by = $1, admin_note = $2, updated_at = NOW() WHERE id = $3 RETURNING *', [request.admin.id, note, recharge.id]); await client.query("UPDATE payment_transactions SET status = 'FAILED', updated_at = NOW() WHERE recharge_request_id = $1", [recharge.id]); return rejected.rows[0]; } const account = await loadAccount(client, recharge.user_id, 'FUND'); await writeLedger(client, account, 'CREDIT', Number(recharge.amount_minor), 'RECHARGE_APPROVED', 'recharge_request', recharge.id, 'Manual QR recharge approved', request.admin.id, `recharge:${recharge.id}`); const approved = await client.query('UPDATE recharge_requests SET status = \'APPROVED\', reviewed_at = NOW(), reviewed_by = $1, admin_note = $2, updated_at = NOW() WHERE id = $3 RETURNING *', [request.admin.id, note, recharge.id]); await client.query("UPDATE payment_transactions SET status = 'SUCCESS', updated_at = NOW() WHERE recharge_request_id = $1", [recharge.id]); return approved.rows[0]; }); await audit(request.admin.id, `RECHARGE_${status}`, 'recharge_request', request.params.id, { note }); return response.json({ recharge: result }); } catch (error) { return next(error); } });
 
-app.get('/api/admin/payment-settings', async (request, response, next) => { try { const result = await query('SELECT id, qr_payload, instructions, account_name, payment_identifier, minimum_amount_minor, maximum_amount_minor, enabled, updated_at FROM payment_settings WHERE id = 1'); return response.json({ settings: result.rows[0] }); } catch (error) { return next(error); } });
-app.patch('/api/admin/payment-settings', async (request, response, next) => { try { const paymentIdentifier = String(request.body?.paymentIdentifier || '').trim(); const qrPayload = String(request.body?.qrPayload || '').trim(); const instructions = String(request.body?.instructions || '').trim(); const accountName = String(request.body?.accountName || '').trim(); const minimum = money(request.body?.minimumAmount); const maximum = request.body?.maximumAmount ? money(request.body.maximumAmount) : null; const enabled = Boolean(request.body?.enabled); if (maximum && maximum < minimum) throw failure('Maximum recharge must be greater than the minimum.'); if (enabled && (!paymentIdentifier || !qrImageData(qrPayload) || !instructions)) throw failure('Configure the real payment identifier, QR image data URL, and instructions before enabling recharge.'); const result = await query('UPDATE payment_settings SET payment_identifier = $1, qr_payload = $2, instructions = $3, account_name = $4, minimum_amount_minor = $5, maximum_amount_minor = $6, enabled = $7, updated_by = $8, updated_at = NOW() WHERE id = 1 RETURNING *', [paymentIdentifier, qrPayload, instructions, accountName, minimum, maximum, enabled, request.admin.id]); await audit(request.admin.id, 'PAYMENT_SETTINGS_UPDATED', 'payment_settings', '1'); return response.json({ settings: result.rows[0] }); } catch (error) { return next(error); } });
+app.get('/api/admin/payment-settings', async (request, response, next) => { try { const result = await query('SELECT id, instructions, account_name, payment_identifier, minimum_amount_minor, maximum_amount_minor, enabled, qr_image_key, qr_image_filename, updated_at FROM payment_settings WHERE id = 1'); return response.json({ settings: paymentSettingsView(result.rows[0], true), qrStorageReady: qrStorageReady() }); } catch (error) { return next(error); } });
+app.patch('/api/admin/payment-settings', async (request, response, next) => {
+  try {
+    const paymentIdentifier = String(request.body?.paymentIdentifier || '').trim();
+    const instructions = String(request.body?.instructions || '').trim();
+    const accountName = String(request.body?.accountName || '').trim();
+    const minimum = money(request.body?.minimumAmount);
+    const maximum = request.body?.maximumAmount ? money(request.body.maximumAmount) : null;
+    const enabled = Boolean(request.body?.enabled);
+    const current = await query('SELECT qr_image_key FROM payment_settings WHERE id = 1');
+    if (maximum && maximum < minimum) throw failure('Maximum recharge must be greater than the minimum.');
+    if (enabled && (!paymentIdentifier || !accountName || !instructions || !current.rows[0]?.qr_image_key || !qrStorageReady())) throw failure('Upload a valid QR image and complete all payment details before enabling recharge.');
+    const result = await query('UPDATE payment_settings SET payment_identifier = $1, instructions = $2, account_name = $3, minimum_amount_minor = $4, maximum_amount_minor = $5, enabled = $6, updated_by = $7, updated_at = NOW() WHERE id = 1 RETURNING *', [paymentIdentifier, instructions, accountName, minimum, maximum, enabled, request.admin.id]);
+    await audit(request.admin.id, 'PAYMENT_SETTINGS_UPDATED', 'payment_settings', '1');
+    return response.json({ settings: paymentSettingsView(result.rows[0], true), qrStorageReady: qrStorageReady() });
+  } catch (error) { return next(error); }
+});
+app.post('/api/admin/payment-settings/qr', receiveQrImage, async (request, response, next) => {
+  try {
+    const file = request.file;
+    const detected = await validateQrImage({ buffer: file?.buffer, declaredType: file?.mimetype });
+    const keyName = `qr/${randomUUID()}.${detected.extension}`;
+    const safeFilename = file.originalname.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 180) || `qr-code.${detected.extension}`;
+    const imageUrl = await putQrImage({ key: keyName, body: file.buffer, contentType: detected.contentType });
+    let row;
+    try {
+      const result = await transaction(async (client) => client.query('UPDATE payment_settings SET qr_image_key = $1, qr_image_filename = $2, updated_at = NOW(), updated_by = $3 WHERE id = 1 RETURNING *', [keyName, safeFilename, request.admin.id]));
+      row = result.rows[0];
+    } catch (error) {
+      await deleteQrImage(keyName).catch(() => {});
+      throw error;
+    }
+    await audit(request.admin.id, 'PAYMENT_QR_UPLOADED', 'payment_settings', '1', { filename: safeFilename });
+    return response.status(201).json({ settings: { ...paymentSettingsView(row, true), qr_image_url: imageUrl ? '/api/payment-qr' : '' } });
+  } catch (error) { return next(error); }
+});
+app.delete('/api/admin/payment-settings/qr', async (request, response, next) => {
+  try {
+    const result = await transaction(async (client) => {
+      const current = await client.query('SELECT * FROM payment_settings WHERE id = 1 FOR UPDATE');
+      const row = current.rows[0];
+      const updated = await client.query('UPDATE payment_settings SET qr_image_key = \'\', qr_image_filename = \'\', enabled = FALSE, updated_at = NOW(), updated_by = $1 WHERE id = 1 RETURNING *', [request.admin.id]);
+      return { row, updated: updated.rows[0] };
+    });
+    await deleteQrImage(result.row?.qr_image_key).catch(() => {});
+    await audit(request.admin.id, 'PAYMENT_QR_REMOVED', 'payment_settings', '1');
+    return response.json({ settings: paymentSettingsView(result.updated, true) });
+  } catch (error) { return next(error); }
+});
 
 app.get('/api/admin/packages', async (request, response, next) => { try { const result = await query('SELECT * FROM package_plans ORDER BY kind, amount_minor'); return response.json({ data: result.rows.map(packageView) }); } catch (error) { return next(error); } });
 app.post('/api/admin/packages', async (request, response, next) => { try { const kind = String(request.body?.kind || '').toUpperCase(); if (!['BASIC', 'FD'].includes(kind)) throw failure('Invalid package type.'); const amountMinor = money(request.body?.amount); const durationDays = Number(request.body?.durationDays); if (!Number.isInteger(durationDays) || durationDays < 1) throw failure('Duration must be a positive number of days.'); const dailyRoi = kind === 'BASIC' ? basicRoiMinor(amountMinor) : (request.body?.dailyRoi ? money(request.body.dailyRoi) : 0); const totalReturn = kind === 'BASIC' ? dailyRoi * durationDays : money(request.body?.totalReturn); const result = await query('INSERT INTO package_plans (kind, name, amount_minor, daily_roi_minor, duration_days, total_return_minor) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *', [kind, text(request.body?.name, 'Package name', 160), amountMinor, dailyRoi, durationDays, totalReturn]); await audit(request.admin.id, 'PACKAGE_PLAN_CREATED', 'package_plan', result.rows[0].id); return response.status(201).json({ package: packageView(result.rows[0]) }); } catch (error) { return next(error); } });
@@ -292,9 +381,9 @@ app.get('/api/admin/integrity', async (request, response, next) => {
 });
 app.get('/api/admin/settings', async (request, response, next) => {
   try {
-    const [payment, referrals] = await Promise.all([query('SELECT enabled, payment_identifier, qr_payload, instructions FROM payment_settings WHERE id = 1'), query('SELECT enabled, level_count, level_percentages_bps, eligible_event FROM referral_settings WHERE id = 1')]);
+    const [payment, referrals] = await Promise.all([query('SELECT enabled, payment_identifier, qr_image_key, instructions, account_name FROM payment_settings WHERE id = 1'), query('SELECT enabled, level_count, level_percentages_bps, eligible_event FROM referral_settings WHERE id = 1')]);
     const paymentRow = payment.rows[0]; const referralRow = referrals.rows[0];
-    const qrReady = Boolean(paymentRow?.enabled && paymentRow.payment_identifier && paymentRow.qr_payload && paymentRow.instructions);
+    const qrReady = Boolean(paymentRow?.enabled && paymentRow.payment_identifier && paymentRow.account_name && paymentRow.qr_image_key && paymentRow.instructions && qrStorageReady());
     const referralReady = Boolean(referralRow?.enabled && referralRow.level_count > 0 && referralRow.level_percentages_bps?.length === referralRow.level_count && referralRow.eligible_event);
     return response.json({ platform: { name: 'Infotech', environment: config.nodeEnv }, integrations: { database: Boolean(pool), manualQr: qrReady, referralIncome: referralReady, email: Boolean(config.resend.apiKey && config.resend.emailFrom) }, secrets: { valuesHidden: true } });
   } catch (error) { return next(error); }
