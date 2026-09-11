@@ -32,12 +32,12 @@ try {
 
   const plans = await client.query("SELECT name, amount_minor, daily_roi_minor, duration_days, total_return_minor, status FROM package_plans WHERE kind = 'BASIC' AND status = 'ACTIVE' ORDER BY amount_minor");
   const expectedPlans = [
-    ['The Investor’s Mindset', 150000, 4500, 25, 112500],
-    ['Rich Poor Difference', 250000, 7500, 25, 187500],
-    ['The Money Mindset', 400000, 12000, 25, 300000],
-    ['Smart Investing', 600000, 18000, 25, 450000],
-    ['The Power of Discipline', 800000, 24000, 25, 600000],
-    ['Financial Freedom', 1000000, 30000, 25, 750000],
+    ['The Investor’s Mindset', 150000, 15000, 25, 375000],
+    ['Rich Poor Difference', 250000, 25000, 25, 625000],
+    ['The Money Mindset', 400000, 40000, 25, 1000000],
+    ['Smart Investing', 600000, 60000, 25, 1500000],
+    ['The Power of Discipline', 800000, 80000, 25, 2000000],
+    ['Financial Freedom', 1000000, 100000, 25, 2500000],
   ];
   if (plans.rowCount !== expectedPlans.length || plans.rows.some((row, index) => [row.name, Number(row.amount_minor), Number(row.daily_roi_minor), row.duration_days, Number(row.total_return_minor)].some((value, field) => value !== expectedPlans[index][field]))) {
     throw new Error('Cleanup stopped because the approved Basic Package guard failed.');

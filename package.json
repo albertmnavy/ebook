@@ -11,7 +11,7 @@
     "start": "node server/index.mjs",
     "start:backend": "node server/index.mjs",
     "migrate": "node server/migrate.mjs",
-    "admin:migrate:hardening": "node server/migrate-hardening.mjs && node server/migrate-qr-storage.mjs",
+    "admin:migrate:hardening": "node server/migrate-hardening.mjs && node server/migrate-qr-storage.mjs && node server/migrate-roi-terms.mjs",
     "roi:run": "node server/roi-run.mjs",
     "admin:migrate": "node server/migrate.mjs",
     "admin:seed": "node server/seed-admin.mjs",
@@ -19,6 +19,7 @@
     "admin:cleanup-demo": "node server/cleanup-demo-data.mjs",
     "test:withdrawal": "node --test server/withdrawal-accounting.test.mjs",
     "test:qr-upload": "node --test server/qr-upload.test.mjs",
+    "test:basic-roi": "node --test server/basic-roi.test.mjs",
     "build": "node build.mjs",
     "lint": "oxlint src",
     "format": "oxfmt"
