@@ -160,6 +160,7 @@ h3 { font-size: 19px; line-height: 1.2; }
 .qr span { max-width: 100%; color: var(--muted); text-align: center; overflow-wrap: anywhere; }
 .qr i { background: #fff; } .qr i.filled { background: #101b2a; }
 .recharge-input { display: grid; gap: 8px; margin: 14px 0; }
+.recharge-limit-note { display: block; margin-top: 4px; color: #6a8098; font-size: 12px; font-weight: 500; }
 .center { text-align: center; }
 .section-gap { height: 28px; }
 

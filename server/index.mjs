@@ -147,7 +147,7 @@ async function writeLedger(client, account, direction, amount, eventType, refere
   if (after < 0) throw failure('Insufficient balance.', 409);
   await client.query('UPDATE balances SET available_minor = $1, version = version + 1, updated_at = NOW() WHERE account_id = $2', [after, account.id]);
   const table = account.type === 'FUND' ? 'fund_ledger' : 'income_ledger';
-  await client.query(`INSERT INTO ${table} (user_id, account_id, direction, amount_minor, balance_before_minor, balance_after_minor, event_type, reference_type, reference_id, description, created_by, idempotency_key) VALUES ((SELECT user_id FROM accounts WHERE id = $1), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`, [account.id, direction, amount, before, after, eventType, referenceType || null, referenceId || null, description, createdBy || null, idempotencyKey]);
+  await client.query(`INSERT INTO ${table} (user_id, account_id, direction, amount_minor, balance_before_minor, balance_after_minor, event_type, reference_type, reference_id, description, created_by, idempotency_key) VALUES ((SELECT user_id FROM accounts WHERE id = $1), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [account.id, direction, amount, before, after, eventType, referenceType || null, referenceId || null, description, createdBy || null, idempotencyKey]);
   return { before, after };
 }
 async function findIdempotent(client, table, idempotencyKey) { const result = await client.query(`SELECT * FROM ${table} WHERE idempotency_key = $1`, [idempotencyKey]); return result.rows[0] || null; }
