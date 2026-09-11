@@ -155,7 +155,9 @@ h3 { font-size: 19px; line-height: 1.2; }
 .notice { margin-bottom: 16px; padding: 14px 18px; border: 1px solid #d9e5ef; border-radius: 10px; background: #f4f8fc; color: #45617d; line-height: 1.5; text-align: center; }
 .gateway-label { display: flex; justify-content: space-between; gap: 16px; margin: 16px 0 12px; color: #254766; font-weight: 650; }
 .gateway-label span { color: var(--green); font-size: 13px; font-weight: 600; }
-.qr { width: 184px; height: 184px; display: grid; grid-template-columns: repeat(21, 1fr); gap: 2px; margin: 0 auto 18px; padding: 7px; background: white; border: 1px solid var(--line); }
+.qr { width: min(100%, 320px); max-width: 320px; min-height: 120px; height: auto; display: grid; place-items: center; margin: 0 auto 18px; padding: 8px; overflow: hidden; background: white; border: 1px solid var(--line); }
+.qr img { display: block; width: auto; max-width: 100%; height: auto; max-height: 320px; object-fit: contain; }
+.qr span { max-width: 100%; color: var(--muted); text-align: center; overflow-wrap: anywhere; }
 .qr i { background: #fff; } .qr i.filled { background: #101b2a; }
 .recharge-input { display: grid; gap: 8px; margin: 14px 0; }
 .center { text-align: center; }
