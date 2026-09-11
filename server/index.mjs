@@ -12,10 +12,11 @@ import { applyConfiguredReferralIncome } from './referrals.mjs';
 import { runAdminBootstrapIfEnabled } from './bootstrap-admin.mjs';
 import { calculateWithdrawalAccounting, reviewWithdrawalRequest } from './withdrawal-accounting.mjs';
 import multer from 'multer';
-import { deleteQrImage, getQrImage, putQrImage, qrStorageReady, validateQrImage } from './qr-storage.mjs';
+import { deleteQrImage, getQrImage, initializeQrStorage, putQrImage, qrStorageReady, validateQrImage } from './qr-storage.mjs';
 
 assertProductionConfig();
 await runAdminBootstrapIfEnabled();
+await initializeQrStorage();
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const publicRoot = path.join(projectRoot, 'dist');
 const adminFile = path.join(publicRoot, 'admin.html');

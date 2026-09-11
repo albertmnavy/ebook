@@ -16,12 +16,7 @@ export const config = {
   },
   trustProxy: bool(process.env.TRUST_PROXY) || process.env.NODE_ENV === 'production',
   qrStorage: {
-    endpoint: process.env.QR_STORAGE_ENDPOINT || '',
-    region: process.env.QR_STORAGE_REGION || 'auto',
-    bucket: process.env.QR_STORAGE_BUCKET || '',
-    accessKeyId: process.env.QR_STORAGE_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.QR_STORAGE_SECRET_ACCESS_KEY || '',
-    forcePathStyle: bool(process.env.QR_STORAGE_FORCE_PATH_STYLE),
+    directory: process.env.QR_STORAGE_DIR || '',
     maxBytes: 5 * 1024 * 1024,
   },
 };
