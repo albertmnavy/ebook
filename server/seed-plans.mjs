@@ -1,5 +1,5 @@
 import { pool, query } from './db.mjs';
-import { basicRoiMinor, basicTotalReturnMinor } from './basic-roi.mjs';
+import { basicDailyRoiMinor, basicTotalReturnMinor } from './basic-roi.mjs';
 
 if (!pool) throw new Error('DATABASE_URL is not configured.');
 const basic = [
@@ -9,8 +9,8 @@ const basic = [
 for (const plan of basic) {
   const [name, amount, durationDays] = plan;
   const amountMinor = amount * 100;
-  const dailyRoiMinor = basicRoiMinor(amountMinor);
-  const totalReturnMinor = basicTotalReturnMinor(amountMinor, durationDays);
+  const dailyRoiMinor = basicDailyRoiMinor(amountMinor);
+  const totalReturnMinor = basicTotalReturnMinor(amountMinor);
   await query('INSERT INTO package_plans (kind, name, amount_minor, daily_roi_minor, duration_days, total_return_minor) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (kind, name) DO UPDATE SET amount_minor = EXCLUDED.amount_minor, daily_roi_minor = EXCLUDED.daily_roi_minor, duration_days = EXCLUDED.duration_days, total_return_minor = EXCLUDED.total_return_minor, updated_at = NOW()', ['BASIC', name, amountMinor, dailyRoiMinor, durationDays, totalReturnMinor]);
 }
 console.log('Finance package plans are ready.');

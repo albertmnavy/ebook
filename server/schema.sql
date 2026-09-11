@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS package_plans (
 
 CREATE TABLE IF NOT EXISTS package_activations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id), package_plan_id UUID NOT NULL REFERENCES package_plans(id),
-  principal_minor BIGINT NOT NULL CHECK (principal_minor > 0), daily_roi_minor BIGINT NOT NULL CHECK (daily_roi_minor >= 0), total_return_minor BIGINT NOT NULL CHECK (total_return_minor >= 0),
+  principal_minor BIGINT NOT NULL CHECK (principal_minor > 0), daily_roi_minor BIGINT NOT NULL CHECK (daily_roi_minor >= 0), total_return_minor BIGINT NOT NULL CHECK (total_return_minor >= 0), duration_days INTEGER NOT NULL CHECK (duration_days > 0),
   started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), maturity_at TIMESTAMPTZ NOT NULL, status activation_status NOT NULL DEFAULT 'ACTIVE',
   idempotency_key TEXT NOT NULL UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

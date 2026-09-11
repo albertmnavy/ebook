@@ -1,6 +1,6 @@
 import { transaction } from './db.mjs';
 import { applyConfiguredReferralIncome } from './referrals.mjs';
-import { basicRoiMinor } from './basic-roi.mjs';
+import { basicDailyAccrualMinor } from './basic-roi.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -38,7 +38,7 @@ export async function runBasicRoiAccrual() {
   return transaction(async (client) => {
     const todayResult = await client.query("SELECT (NOW() AT TIME ZONE 'UTC')::date AS today");
     const today = utcDate(todayResult.rows[0].today);
-    const activations = await client.query(`SELECT pa.id, pa.user_id, pa.principal_minor, pa.daily_roi_minor, pa.started_at, pa.maturity_at
+    const activations = await client.query(`SELECT pa.id, pa.user_id, pa.total_return_minor, pa.duration_days, pa.started_at, pa.maturity_at
       FROM package_activations pa
       JOIN package_plans pp ON pp.id = pa.package_plan_id
       WHERE pa.status = 'ACTIVE' AND pp.kind = 'BASIC' AND pa.started_at < pa.maturity_at
@@ -49,9 +49,10 @@ export async function runBasicRoiAccrual() {
       const firstDay = utcDate(activation.started_at);
       const lastEligibleDay = new Date(utcDate(activation.maturity_at).getTime() - DAY_MS);
       const lastDay = lastEligibleDay < today ? lastEligibleDay : today;
-      const dailyAmount = activation.daily_roi_minor == null ? basicRoiMinor(activation.principal_minor) : Number(activation.daily_roi_minor);
       for (let day = firstDay; day <= lastDay; day = new Date(day.getTime() + DAY_MS)) {
         const key = `basic-roi:${activation.id}:${dateKey(day)}`;
+        const dayNumber = Math.floor((day.getTime() - firstDay.getTime()) / DAY_MS) + 1;
+        const dailyAmount = basicDailyAccrualMinor(activation.total_return_minor, activation.duration_days, dayNumber);
         const accrual = await client.query(`INSERT INTO package_roi_accruals
           (package_activation_id, user_id, account_id, accrual_date, amount_minor, idempotency_key)
           SELECT $1, $2, a.id, $3::date, $4, $5

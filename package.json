@@ -11,7 +11,7 @@
     "start": "node server/index.mjs",
     "start:backend": "node server/index.mjs",
     "migrate": "node server/migrate.mjs",
-    "admin:migrate:hardening": "node server/migrate-hardening.mjs && node server/migrate-qr-storage.mjs && node server/migrate-roi-terms.mjs",
+    "admin:migrate:hardening": "node server/migrate-hardening.mjs && node server/migrate-qr-storage.mjs && node server/migrate-roi-terms.mjs && node server/migrate-roi-fractional-terms.mjs",
     "roi:run": "node server/roi-run.mjs",
     "admin:migrate": "node server/migrate.mjs",
     "admin:seed": "node server/seed-admin.mjs",
