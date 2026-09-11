@@ -17,6 +17,7 @@
     "admin:seed": "node server/seed-admin.mjs",
     "admin:seed-plans": "node server/seed-plans.mjs",
     "admin:cleanup-demo": "node server/cleanup-demo-data.mjs",
+    "test:withdrawal": "node --test server/withdrawal-accounting.test.mjs",
     "build": "node build.mjs",
     "lint": "oxlint src",
     "format": "oxfmt"
