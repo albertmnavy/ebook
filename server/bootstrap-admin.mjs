@@ -4,6 +4,12 @@ import { pool, transaction } from './db.mjs';
 
 const BOOTSTRAP_LOCK_KEY = 581204731;
 
+function safeFailure(message) {
+  const error = new Error(message);
+  error.safeBootstrapMessage = message;
+  return error;
+}
+
 function validEmail(value) {
   const email = String(value || '').trim().toLowerCase();
   if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 320) throw new Error('BOOTSTRAP_ADMIN_EMAIL must be a valid email address.');
@@ -31,12 +37,11 @@ export async function runAdminBootstrapIfEnabled({ requireEnabled = false } = {}
     if (requireEnabled) throw new Error('Set BOOTSTRAP_ADMIN_ENABLED=true before running the admin bootstrap command.');
     return { enabled: false, changed: false };
   }
-  if (!pool) throw new Error('DATABASE_URL is not configured.');
-
-  const email = validEmail(process.env.BOOTSTRAP_ADMIN_EMAIL);
-  const password = configuredPassword();
-
-  const result = await transaction(async (client) => {
+  try {
+    if (!pool) throw new Error('DATABASE_URL is not configured.');
+    const email = validEmail(process.env.BOOTSTRAP_ADMIN_EMAIL);
+    const password = configuredPassword();
+    const result = await transaction(async (client) => {
     await client.query('SELECT pg_advisory_xact_lock($1)', [BOOTSTRAP_LOCK_KEY]);
     const candidates = await client.query(
       "SELECT id, user_id, email, password_hash, role, status FROM users WHERE role = 'ADMIN' OR LOWER(email) = LOWER($1) FOR UPDATE",
@@ -44,11 +49,11 @@ export async function runAdminBootstrapIfEnabled({ requireEnabled = false } = {}
     );
     const admins = candidates.rows.filter((row) => row.role === 'ADMIN');
     const activeAdmins = admins.filter((row) => row.status === 'ACTIVE');
-    if (activeAdmins.length > 1) throw new Error('Admin bootstrap stopped because multiple active administrators exist.');
+    if (activeAdmins.length > 1) throw safeFailure('Admin bootstrap skipped because multiple active administrators exist.');
 
     const emailMatch = candidates.rows.find((row) => row.email.toLowerCase() === email);
-    if (emailMatch && emailMatch.role !== 'ADMIN') throw new Error('Admin bootstrap stopped because the configured email belongs to a normal user.');
-    if (admins.length > 1 && !emailMatch) throw new Error('Admin bootstrap stopped because the target administrator is ambiguous.');
+    if (emailMatch && emailMatch.role !== 'ADMIN') throw safeFailure('Admin bootstrap skipped because the configured email belongs to a normal user.');
+    if (admins.length > 1 && !emailMatch) throw safeFailure('Admin bootstrap skipped because the target administrator is ambiguous.');
 
     let target = emailMatch || activeAdmins[0] || (admins.length === 1 ? admins[0] : null);
     let created = false;
@@ -63,7 +68,7 @@ export async function runAdminBootstrapIfEnabled({ requireEnabled = false } = {}
     }
 
     if (target.status !== 'ACTIVE' && activeAdmins.length > 0 && activeAdmins[0].id !== target.id) {
-      throw new Error('Admin bootstrap stopped because the configured administrator is not the sole active administrator.');
+      throw safeFailure('Admin bootstrap skipped because the configured administrator is not the sole active administrator.');
     }
 
     let passwordMatches = false;
@@ -79,7 +84,7 @@ export async function runAdminBootstrapIfEnabled({ requireEnabled = false } = {}
         "UPDATE users SET email = $1, password_hash = $2, status = 'ACTIVE', updated_at = NOW() WHERE id = $3 AND role = 'ADMIN' RETURNING id, user_id, email, role, status, password_hash",
         [email, passwordHash, target.id],
       );
-      if (updated.rowCount !== 1) throw new Error('Admin bootstrap stopped because the target administrator could not be updated safely.');
+      if (updated.rowCount !== 1) throw safeFailure('Admin bootstrap skipped because the target administrator could not be updated safely.');
       target = updated.rows[0];
       await client.query('DELETE FROM sessions WHERE user_id = $1', [target.id]);
       await client.query(
@@ -96,16 +101,22 @@ export async function runAdminBootstrapIfEnabled({ requireEnabled = false } = {}
     const verification = await client.query("SELECT id, user_id, email, role, status, password_hash FROM users WHERE id = $1", [target.id]);
     const verified = verification.rows[0];
     if (!verified || verified.email.toLowerCase() !== email || verified.role !== 'ADMIN' || verified.status !== 'ACTIVE' || !hashIsArgon2id(verified.password_hash)) {
-      throw new Error('Admin bootstrap safety verification failed.');
+      throw safeFailure('Admin bootstrap safety verification failed.');
     }
     let verifiedPassword = false;
     try { verifiedPassword = await argon2.verify(verified.password_hash, password); } catch { verifiedPassword = false; }
-    if (!verifiedPassword) throw new Error('Admin bootstrap safety verification failed.');
+    if (!verifiedPassword) throw safeFailure('Admin bootstrap safety verification failed.');
 
     const count = await client.query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'ADMIN' AND status = 'ACTIVE'");
-    if (count.rows[0].count !== 1) throw new Error('Admin bootstrap safety verification failed: expected exactly one active administrator.');
+    if (count.rows[0].count !== 1) throw safeFailure('Admin bootstrap safety verification failed: expected exactly one active administrator.');
     return { created, changed: created || passwordChanged || emailChanged || activated };
-  });
+    });
 
-  return { enabled: true, ...result };
+    return { enabled: true, ...result };
+  } catch (error) {
+    if (requireEnabled) throw error;
+    const message = error?.safeBootstrapMessage || 'Admin bootstrap skipped because its safety checks could not be completed.';
+    console.error(message);
+    return { enabled: true, changed: false, skipped: true };
+  }
 }
