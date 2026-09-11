@@ -16,6 +16,7 @@
     "admin:migrate": "node server/migrate.mjs",
     "admin:seed": "node server/seed-admin.mjs",
     "admin:seed-plans": "node server/seed-plans.mjs",
+    "admin:cleanup-demo": "node server/cleanup-demo-data.mjs",
     "build": "node build.mjs",
     "lint": "oxlint src",
     "format": "oxfmt"
