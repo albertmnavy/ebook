@@ -16,6 +16,7 @@ const publicRoot = path.join(projectRoot, 'dist');
 const adminFile = path.join(publicRoot, 'admin.html');
 const app = express();
 const loginAttempts = new Map();
+const credentialChangeAttempts = new Map();
 
 app.set('trust proxy', config.trustProxy);
 app.disable('x-powered-by');
@@ -73,6 +74,10 @@ function userView(user) { return { id: user.id, userId: user.user_id, email: use
 async function audit(adminId, action, targetType, targetId, metadata = {}) { await query('INSERT INTO audit_logs (admin_user_id, action, target_type, target_id, metadata) VALUES ($1, $2, $3, $4, $5)', [adminId || null, action, targetType || null, targetId || null, metadata]); }
 function rateAllowed(request) { const keyValue = `${request.ip}:${String(request.body?.email || '').toLowerCase()}`; const now = Date.now(); const recent = (loginAttempts.get(keyValue) || []).filter((time) => now - time < 15 * 60 * 1000); if (recent.length >= 8) return false; recent.push(now); loginAttempts.set(keyValue, recent); return true; }
 function resetRate(request) { loginAttempts.delete(`${request.ip}:${String(request.body?.email || '').toLowerCase()}`); }
+function credentialRateKey(request) { return `${request.ip}:${request.admin?.id || 'unknown'}`; }
+function credentialRateAllowed(request) { const keyValue = credentialRateKey(request); const now = Date.now(); const recent = (credentialChangeAttempts.get(keyValue) || []).filter((time) => now - time < 15 * 60 * 1000); if (recent.length >= 5) return false; recent.push(now); credentialChangeAttempts.set(keyValue, recent); return true; }
+function resetCredentialRate(request) { credentialChangeAttempts.delete(credentialRateKey(request)); }
+function secretText(value, label = 'Password') { if (typeof value !== 'string' || !value.length || value.length > 200) throw failure(`${label} is required.`); return value; }
 
 async function verifyTransactionPassword(client, userId, value) {
   const password = transactionPassword(value);
@@ -180,6 +185,51 @@ app.post('/api/admin/login', adminLogin);
 app.post('/api/admin/logout', requireAdmin, requireCsrf, async (request, response, next) => { try { await audit(request.admin.id, 'ADMIN_LOGOUT', 'user', request.admin.id); await destroySession(request); clearSessionCookie(response); return response.json({ ok: true }); } catch (error) { return next(error); } });
 app.use('/api/admin', requireAdmin, requireCsrf);
 app.get('/api/admin/me', (request, response) => response.json({ user: userView(request.admin), csrfToken: request.admin.csrf_token, expiresAt: request.admin.expires_at }));
+app.get('/api/admin/account', (request, response) => response.json({ account: { userId: request.admin.user_id, email: request.admin.email, role: request.admin.role, status: request.admin.status } }));
+app.patch('/api/admin/account', async (request, response, next) => {
+  try {
+    if (!credentialRateAllowed(request)) return response.status(429).json({ error: 'Too many credential change attempts. Try again later.' });
+    const type = request.body?.type;
+    const result = await transaction(async (client) => {
+      const targetResult = await client.query('SELECT id, email, password_hash, role, status FROM users WHERE id = $1 FOR UPDATE', [request.admin.id]);
+      const target = targetResult.rows[0];
+      if (!target || target.role !== 'ADMIN' || target.status !== 'ACTIVE') throw failure('Credential change could not be completed.', 403);
+      const currentPassword = secretText(request.body?.currentPassword);
+      let currentPasswordValid = false;
+      try { currentPasswordValid = await argon2.verify(target.password_hash, currentPassword); } catch { currentPasswordValid = false; }
+      if (!currentPasswordValid) throw failure('Credential change could not be completed.', 401);
+
+      if (type === 'email') {
+        const email = text(request.body?.email, 'Email', 320).toLowerCase();
+        if (!/^\S+@\S+\.\S+$/.test(email)) throw failure('Credential change could not be completed.');
+        const duplicate = await client.query('SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) AND id <> $2 LIMIT 1', [email, target.id]);
+        if (duplicate.rows[0]) throw failure('Credential change could not be completed.', 409);
+        const updated = await client.query("UPDATE users SET email = $1, updated_at = NOW() WHERE id = $2 AND role = 'ADMIN' AND status = 'ACTIVE' RETURNING id", [email, target.id]);
+        if (updated.rowCount !== 1) throw failure('Credential change could not be completed.');
+        await client.query('DELETE FROM sessions WHERE user_id = $1', [target.id]);
+        await client.query('INSERT INTO audit_logs (admin_user_id, action, target_type, target_id, metadata) VALUES ($1, $2, $3, $4, $5)', [target.id, 'ADMIN_EMAIL_CHANGED', 'user', target.id, { field: 'email' }]);
+        return { type: 'email' };
+      }
+
+      if (type === 'password') {
+        const newPassword = secretText(request.body?.newPassword);
+        const confirmPassword = secretText(request.body?.confirmPassword);
+        if (newPassword.length < 12 || newPassword !== confirmPassword) throw failure('Credential change could not be completed.');
+        const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+        const updated = await client.query("UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2 AND role = 'ADMIN' AND status = 'ACTIVE' RETURNING id", [passwordHash, target.id]);
+        if (updated.rowCount !== 1) throw failure('Credential change could not be completed.');
+        await client.query('DELETE FROM sessions WHERE user_id = $1', [target.id]);
+        await client.query('INSERT INTO audit_logs (admin_user_id, action, target_type, target_id, metadata) VALUES ($1, $2, $3, $4, $5)', [target.id, 'ADMIN_PASSWORD_CHANGED', 'user', target.id, { field: 'password', algorithm: 'argon2id' }]);
+        return { type: 'password' };
+      }
+
+      throw failure('Credential change could not be completed.');
+    });
+    resetCredentialRate(request);
+    clearSessionCookie(response);
+    return response.json({ ok: true, changed: result.type, reauthenticate: true });
+  } catch (error) { return next(error); }
+});
 app.get('/api/admin/referral-settings', async (request, response, next) => { try { const result = await query('SELECT id, enabled, level_count, level_percentages_bps, eligible_event, updated_at FROM referral_settings WHERE id = 1'); const settings = result.rows[0] || { enabled: false, level_count: 0, level_percentages_bps: [], eligible_event: '' }; return response.json({ settings: { ...settings, level_percentages: (settings.level_percentages_bps || []).map(value => Number(value) / 100).join(', ') } }); } catch (error) { return next(error); } });
 app.patch('/api/admin/referral-settings', async (request, response, next) => { try { const enabled = Boolean(request.body?.enabled); const levelCount = Number(request.body?.levelCount || 0); const percentages = referralPercentages(request.body?.levelPercentages); const eligibleEvent = String(request.body?.eligibleEvent || '').trim().toUpperCase(); if (!Number.isInteger(levelCount) || levelCount < 0 || levelCount > 20) throw failure('Referral level count must be between 0 and 20.'); if (enabled && (levelCount < 1 || percentages.length !== levelCount || !['PACKAGE_ACTIVATION', 'BASIC_ROI'].includes(eligibleEvent))) throw failure('Referral income remains disabled until levels, percentages, and an eligible event are configured.'); if (!enabled && eligibleEvent && !['PACKAGE_ACTIVATION', 'BASIC_ROI'].includes(eligibleEvent)) throw failure('Unsupported referral eligible event.'); const result = await query('UPDATE referral_settings SET enabled = $1, level_count = $2, level_percentages_bps = $3::integer[], eligible_event = $4, updated_by = $5, updated_at = NOW() WHERE id = 1 RETURNING id, enabled, level_count, level_percentages_bps, eligible_event, updated_at', [enabled, levelCount, percentages, eligibleEvent, request.admin.id]); await audit(request.admin.id, 'REFERRAL_SETTINGS_UPDATED', 'referral_settings', '1', { enabled, levelCount, eligibleEvent }); return response.json({ settings: result.rows[0] }); } catch (error) { return next(error); } });
 
