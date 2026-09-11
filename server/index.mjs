@@ -9,8 +9,10 @@ import { pool, query, transaction } from './db.mjs';
 import { clearSessionCookie, createSession, destroySession, getSession, requireAdmin, requireAuth, requireCsrf, requireUser, setSessionCookie } from './auth.mjs';
 import { runBasicRoiAccrual } from './roi-worker.mjs';
 import { applyConfiguredReferralIncome } from './referrals.mjs';
+import { runAdminBootstrapIfEnabled } from './bootstrap-admin.mjs';
 
 assertProductionConfig();
+await runAdminBootstrapIfEnabled();
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const publicRoot = path.join(projectRoot, 'dist');
 const adminFile = path.join(publicRoot, 'admin.html');
